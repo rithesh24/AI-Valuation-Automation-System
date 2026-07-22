@@ -1,0 +1,21 @@
+{
+  "name": "avas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Valuation Automation System",
+  "workspaces": [
+    "frontend",
+    "electron"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:electron": "npm run dev --workspace=electron",
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:electron\"",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:electron": "npm run build --workspace=electron",
+    "build": "npm run build:frontend && npm run build:electron"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
