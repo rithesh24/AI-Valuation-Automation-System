@@ -10,11 +10,11 @@
 ---
 
 ## Phase 2 - File Upload System
-- [ ] Upload PDFs
-- [ ] Upload DOCX
-- [ ] Upload Images
-- [ ] File validation
-- [ ] Temporary storage
+- [x] Upload PDFs
+- [x] Upload DOCX
+- [x] Upload Images
+- [x] File validation
+- [x] Temporary storage
 
 ---
 
@@ -57,6 +57,7 @@
 ## Phase 7 - Dashboard
 - [ ] Token usage
 - [ ] API cost
+
 - [ ] Monthly statistics
 
 ---

@@ -12,6 +12,10 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Uploaded files (temporary storage, never committed)
+backend/data/
+docs
+
 # Env
 .env
 .env.local

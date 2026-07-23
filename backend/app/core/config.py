@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     ENV: str = "development"
     ANTHROPIC_API_KEY: str = ""
     CORS_ORIGINS: str = "http://localhost:3000"
+    UPLOAD_DIR: str = "data/uploads"
+    MAX_UPLOAD_SIZE_MB: int = 25
 
     @property
     def cors_origins_list(self) -> list[str]:
