@@ -24,9 +24,12 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
+playwright install chromium
 copy .env.example .env
 uvicorn app.main:app --reload
 ```
+
+`playwright install chromium` is a one-time step separate from `pip install` — it downloads the actual browser binary that `easr_service.py` drives. Without it, eASR lookups fail with a clear "Chromium not installed" error rather than crashing.
 
 ### Frontend (Next.js)
 

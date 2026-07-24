@@ -19,18 +19,19 @@
 ---
 
 ## Phase 3 - Document Processing
-- [ ] PDF text extraction
-- [ ] DOCX extraction
-- [ ] OCR integration
+- [x] PDF text extraction
+- [x] DOCX extraction
+- [x] OCR integration
 
 ---
 
 ## Phase 4 - Browser Automation
-- [ ] Playwright setup
-- [ ] eASR automation (confirmed: no CAPTCHA, fully unattended)
-- [ ] Retry mechanism
-- [ ] Error handling
-- [ ] Evaluate RERA/SRO automation feasibility (stretch, per-source)
+- [x] Playwright setup
+- [x] eASR automation (confirmed: no CAPTCHA, fully unattended)
+- [x] Retry mechanism
+- [x] Error handling
+- [x] Evaluate RERA/SRO automation feasibility (stretch, per-source) — RERA feasible (no CAPTCHA), SRO not feasible (CAPTCHA-gated); see D15.
+- [x] `official_sources_service.py` (RERA project search) — implemented and verified live; see D16.
 
 ---
 
