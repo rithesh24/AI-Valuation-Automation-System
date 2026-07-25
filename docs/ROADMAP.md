@@ -36,22 +36,22 @@
 ---
 
 ## Phase 5 - AI Integration
-- [ ] Canonical data schema (derived from docs/PROMPTS.md sections 4-11, 24-26)
-- [ ] Prompt Builder
-- [ ] Claude API
-- [ ] Web-search tool integration for Tier 2 comparable research (99acres, MagicBricks, etc.)
+- [x] Canonical data schema (derived from docs/UPDATED_PROMPTS.md Stage 1, sections 2-20)
+- [x] Prompt Builder
+- [x] Claude API (Stage 1 extraction call — retries, JSON parsing; no API key set yet, see PROGRESS.md)
+- [x] Web-search tool integration for Tier 2 comparable research (99acres, MagicBricks, etc.) — tool attached, not yet verified live
 - [ ] Token tracking
 
 ---
 
 ## Phase 6 - Report Generation
-- [ ] Template skeleton extraction (python-docx)
-- [ ] Claude-assisted field-to-template mapping
-- [ ] Mapping cache (keyed by template skeleton hash) + manual regenerate override
-- [ ] Clone-and-fill DOCX injection (preserve formatting)
-- [ ] Automated final quality-check validation pass
-- [ ] Preview report
-- [ ] Download DOCX
+- [x] Template skeleton extraction (python-docx)
+- [x] Claude-assisted field-to-template mapping
+- [x] Mapping cache (keyed by template skeleton hash) + manual regenerate override
+- [x] Clone-and-fill DOCX injection (preserve formatting)
+- [x] Automated final quality-check validation pass
+- [x] Preview report
+- [x] Download DOCX
 
 ---
 

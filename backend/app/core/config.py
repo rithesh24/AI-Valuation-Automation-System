@@ -5,10 +5,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     ENV: str = "development"
+    DATABASE_PATH: str = "data/avas.db"
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-5"
+    ANTHROPIC_MAX_RETRIES: int = 2
+    ANTHROPIC_RETRY_DELAY_SECONDS: float = 3.0
     CORS_ORIGINS: str = "http://localhost:3000"
     UPLOAD_DIR: str = "data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 25
+    REPORTS_DIR: str = "data/reports"
     TESSERACT_CMD: str = ""
     OCR_TRIGGER_CHAR_THRESHOLD: int = 20
     EASR_HEADLESS: bool = True

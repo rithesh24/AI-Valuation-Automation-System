@@ -86,3 +86,8 @@ Browser lifecycle: fresh Chromium browser/context/page per call, closed in `fina
 - A confirmed "zero results" state was observed live (empty result set, no crash) — this one is more solid than eASR's equivalent gap, since the result cards' *absence* is itself the found=False signal, with no dependency on recognizing a specific "no data" message.
 **Why:** Same reasoning as D14 — ship the confirmed-working core path (single project/registration-number lookups, the realistic valuer use case) rather than block on full pagination support for a case (browsing thousands of projects) the report-generation flow won't actually need.
 **Related:** D14, D15.
+
+## D17 — Token tracking (usage_service.py) deferred (2026-07-25)
+**Decision:** Implementation of `usage_service.py` (SQLite-backed token/cost tracking, per D10 — stdlib `sqlite3`, `record_usage()`/`get_monthly_usage()`, wired into `claude_service.py`'s successful extraction path, per-million-token pricing as configurable settings) was scoped and proposed but deferred at the client's request. `usage_service.py` remains a stub; Phase 5's "Token tracking" roadmap item stays unchecked.
+**Why:** No dashboard exists yet to display usage (that's Phase 7) and no API key is set yet to generate real usage, so there's nothing to see even if it were built now — better to build it closer to when it's actually needed.
+**Related:** D10.
