@@ -10,6 +10,7 @@ interface FileUploadSectionProps {
   accept: string;
   sessionId: string | null;
   onSessionId: (sessionId: string) => void;
+  onFilesUploaded?: (files: UploadedFileInfo[]) => void;
   optional?: boolean;
 }
 
@@ -20,6 +21,7 @@ export default function FileUploadSection({
   accept,
   sessionId,
   onSessionId,
+  onFilesUploaded,
   optional = false,
 }: FileUploadSectionProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
@@ -38,6 +40,7 @@ export default function FileUploadSection({
       const result = await uploadFiles(Array.from(selected), category, sessionId);
       setUploadedFiles((previous) => [...previous, ...result]);
       onSessionId(result[0].session_id);
+      onFilesUploaded?.(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed.');
     } finally {

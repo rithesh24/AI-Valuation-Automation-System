@@ -81,3 +81,67 @@ def test_generate_with_bad_template_path_returns_400() -> None:
         json={"template_path": "does_not_exist.docx", "data": {}},
     )
     assert response.status_code == 400
+
+
+class _FakeAnthropicUsage:
+    def __init__(self) -> None:
+        self.input_tokens = 100
+        self.output_tokens = 50
+
+
+class _FakeAnthropicResponse:
+    def __init__(self, text: str) -> None:
+        self.content = [type("Block", (), {"type": "text", "text": text})()]
+        self.usage = _FakeAnthropicUsage()
+
+
+class TestGenerateFromSession:
+    """POST /reports/generate-from-session: the full upload -> parse ->
+    extract -> map -> inject pipeline, driven by session_id alone."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated_uploads(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("app.core.config.settings.UPLOAD_DIR", str(tmp_path / "uploads"))
+        monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
+
+    def _upload_session(self, tmp_path: Path, session_id: str) -> None:
+        template_path = tmp_path / "uploads" / session_id / "template" / "template.docx"
+        template_path.parent.mkdir(parents=True)
+        _build_template(template_path)
+
+        document_path = tmp_path / "uploads" / session_id / "property_document" / "deed.docx"
+        document_path.parent.mkdir(parents=True)
+        property_document = Document()
+        property_document.add_paragraph("Property located in Pune district.")
+        property_document.save(document_path)
+
+    def test_full_pipeline_from_session_id(self, tmp_path: Path, monkeypatch) -> None:
+        session_id = "session-route-1"
+        self._upload_session(tmp_path, session_id)
+
+        def fake_call_claude(self, prompt, tools):  # noqa: ARG001
+            if tools:
+                return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
+            return _FakeAnthropicResponse(
+                '{"property_identification.district": {"location_id": "t0r0c1", "confidence": "high"}}'
+            )
+
+        monkeypatch.setattr(ClaudeService, "_call_claude", fake_call_claude)
+
+        response = client.post(
+            "/reports/generate-from-session", json={"session_id": session_id}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["extracted_data"]["property_identification"]["district"] == "Pune"
+        assert body["quality_check"]["passed"] is True
+
+        preview = client.get(f"/reports/{body['report_id']}/preview")
+        assert "Pune" in preview.json()["text"]
+
+    def test_no_uploaded_documents_returns_400(self) -> None:
+        response = client.post(
+            "/reports/generate-from-session", json={"session_id": "nonexistent-session"}
+        )
+        assert response.status_code == 400

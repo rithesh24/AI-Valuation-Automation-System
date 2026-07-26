@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-sonnet-5"
     ANTHROPIC_MAX_RETRIES: int = 2
     ANTHROPIC_RETRY_DELAY_SECONDS: float = 3.0
+    # Placeholder Sonnet-class list pricing (USD per million tokens) — update once
+    # real usage/billing is available (see docs/DECISIONS.md D18).
+    ANTHROPIC_INPUT_PRICE_PER_MTOK: float = 3.0
+    ANTHROPIC_OUTPUT_PRICE_PER_MTOK: float = 15.0
     CORS_ORIGINS: str = "http://localhost:3000"
     UPLOAD_DIR: str = "data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 25

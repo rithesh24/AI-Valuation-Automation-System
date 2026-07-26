@@ -40,7 +40,7 @@
 - [x] Prompt Builder
 - [x] Claude API (Stage 1 extraction call — retries, JSON parsing; no API key set yet, see PROGRESS.md)
 - [x] Web-search tool integration for Tier 2 comparable research (99acres, MagicBricks, etc.) — tool attached, not yet verified live
-- [ ] Token tracking
+- [x] Token tracking
 
 ---
 
@@ -56,21 +56,21 @@
 ---
 
 ## Phase 7 - Dashboard
-- [ ] Token usage
-- [ ] API cost
-
-- [ ] Monthly statistics
+- [x] Token usage
+- [x] API cost
+- [x] Monthly statistics
 
 ---
 
 ## Phase 8 - Testing
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] UI testing
+- [x] Unit tests
+- [x] Integration tests
+- [x] UI testing
+- [ ] Live end-to-end test against the real Claude API (blocked until `ANTHROPIC_API_KEY` is set)
 
 ---
 
 ## Phase 9 - Production
-- [ ] Build Electron app
-- [ ] Package installer
-- [ ] Documentation
+- [x] Build Electron app (auto-launches the bundled backend, serves the frontend locally — see D21)
+- [ ] Package installer (Chromium + Tesseract now bundled, client needs to install nothing — D23; NSIS build itself still blocked on Developer Mode/elevated terminal for this dev machine — pipeline verified correct via the unpacked build, see D21)
+- [x] Documentation (README packaging section)

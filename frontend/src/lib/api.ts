@@ -35,3 +35,73 @@ export async function uploadFiles(
 
   return response.json();
 }
+
+export interface MonthlyUsage {
+  year: number;
+  month: number;
+  request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+export async function getMonthlyUsage(): Promise<MonthlyUsage> {
+  const response = await fetch(`${API_BASE_URL}/usage/monthly`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to load usage with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface InjectionResult {
+  output_path: string;
+  filled_fields: string[];
+  unmapped_fields: string[];
+}
+
+export interface QualityCheckResult {
+  passed: boolean;
+  injection_failures: string[];
+  disclosed_unavailable: string[];
+}
+
+export interface GenerateReportResult {
+  report_id: string;
+  injection: InjectionResult;
+  quality_check: QualityCheckResult;
+}
+
+export async function generateReportFromSession(sessionId: string): Promise<GenerateReportResult> {
+  const response = await fetch(`${API_BASE_URL}/reports/generate-from-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Report generation failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getReportPreview(reportId: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/reports/${reportId}/preview`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to load preview with status ${response.status}`);
+  }
+
+  const body = await response.json();
+  return body.text;
+}
+
+export function getReportDownloadUrl(reportId: string): string {
+  return `${API_BASE_URL}/reports/${reportId}/download`;
+}

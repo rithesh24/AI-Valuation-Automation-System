@@ -4,16 +4,17 @@
   "private": true,
   "description": "AI Valuation Automation System",
   "workspaces": [
-    "frontend",
-    "electron"
+    "frontend"
   ],
   "scripts": {
     "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:electron": "npm run dev --workspace=electron",
+    "dev:electron": "cd electron && npm run dev",
     "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:electron\"",
     "build:frontend": "npm run build --workspace=frontend",
-    "build:electron": "npm run build --workspace=electron",
-    "build": "npm run build:frontend && npm run build:electron"
+    "build:electron": "cd electron && npm run build",
+    "build:backend": "cd backend && .venv\\Scripts\\pyinstaller avas-backend.spec",
+    "build": "npm run build:frontend && npm run build:electron",
+    "package": "npm run build:frontend && npm run build:backend && cd electron && npm run package"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

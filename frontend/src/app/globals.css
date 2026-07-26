@@ -53,3 +53,40 @@ main {
   padding-left: 1.25rem;
   font-size: 0.9rem;
 }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
+
+.stat-label {
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.report-preview {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f7f7f7;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+}

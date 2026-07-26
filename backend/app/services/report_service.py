@@ -12,7 +12,8 @@ import copy
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from pathlib import Path
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -24,8 +25,11 @@ from app.core.db import get_connection
 from app.models.template_mapping import FieldMapping, SkeletonLocation
 from app.models.valuation_schema import INFO_NOT_AVAILABLE, ValuationReportData
 from app.services.claude_service import ClaudeService
+from app.services.document_parser import DocumentParser, DocumentParserError
+from app.services.upload_service import UploadCategory, UploadService
 
 _TABLE_CELL_LOCATION_RE = re.compile(r"^t(\d+)r(\d+)c(\d+)$")
+_OCR_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
 class ReportServiceError(Exception):
@@ -202,6 +206,63 @@ class ReportService:
             output_path=output_path, filled_fields=filled_fields, unmapped_fields=unmapped_fields
         )
 
+    def generate_full_report(
+        self,
+        session_id: str,
+        output_path: str,
+        valuation_date: date | None = None,
+        tier1_official_data: str | None = None,
+        force_regenerate_mapping: bool = False,
+        upload_service: UploadService | None = None,
+        document_parser: DocumentParser | None = None,
+        claude_service: ClaudeService | None = None,
+    ) -> tuple[InjectionResult, QualityCheckResult, ValuationReportData]:
+        """Full pipeline entry point (docs/ARCHITECTURE.md's Data Flow): a
+        session's uploaded documents -> parsed text -> Stage 1 extraction ->
+        Stage 2 mapping (cached) -> Stage 3 injection -> quality check.
+
+        Tier 1 official data (eASR) is an optional caller-supplied string —
+        looking it up is a separate, manual step (D14/D15: it needs
+        valuer-provided District/Taluka/Village inputs that can't be derived
+        from the uploaded documents alone).
+        """
+        upload_service = upload_service or UploadService()
+        document_parser = document_parser or DocumentParser()
+        claude_service = claude_service or ClaudeService()
+
+        template_paths = upload_service.list_session_files(session_id, UploadCategory.TEMPLATE)
+        if len(template_paths) != 1:
+            raise ReportServiceError(
+                f"Expected exactly one uploaded template for session '{session_id}', "
+                f"found {len(template_paths)}."
+            )
+        template_path = template_paths[0]
+
+        document_paths = upload_service.list_session_files(
+            session_id, UploadCategory.PROPERTY_DOCUMENT
+        )
+        if not document_paths:
+            raise ReportServiceError(
+                f"No property documents uploaded for session '{session_id}'."
+            )
+
+        document_texts = {
+            Path(path).name: _parse_document(document_parser, path) for path in document_paths
+        }
+
+        extraction = claude_service.extract_valuation_data(
+            document_texts=document_texts,
+            tier1_official_data=tier1_official_data,
+            valuation_date=valuation_date,
+        )
+
+        mapping, _ = self.get_or_create_mapping(
+            template_path, claude_service=claude_service, force_regenerate=force_regenerate_mapping
+        )
+        injection = self.inject_data(template_path, mapping, extraction.data, output_path)
+        quality_check = self.run_quality_check(mapping, extraction.data)
+        return injection, quality_check, extraction.data
+
     def run_quality_check(
         self, mapping: dict[str, FieldMapping], data: ValuationReportData
     ) -> QualityCheckResult:
@@ -225,6 +286,20 @@ class ReportService:
             injection_failures=injection_failures,
             disclosed_unavailable=disclosed_unavailable,
         )
+
+
+def _parse_document(document_parser: DocumentParser, path: str) -> str:
+    extension = Path(path).suffix.lower()
+    try:
+        if extension == ".pdf":
+            return document_parser.extract_pdf_text(path)
+        if extension == ".docx":
+            return document_parser.extract_docx_text(path)
+        if extension in _OCR_EXTENSIONS:
+            return document_parser.ocr_scanned_document(path)
+    except DocumentParserError as exc:
+        raise ReportServiceError(f"Could not parse '{path}': {exc}") from exc
+    raise ReportServiceError(f"Unsupported document type for '{path}'.")
 
 
 def _iter_block_items(document: Document):

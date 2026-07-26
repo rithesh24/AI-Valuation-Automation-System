@@ -4,14 +4,38 @@
   "private": true,
   "description": "AVAS Electron desktop shell",
   "main": "dist/main.js",
+  "dependencies": {},
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
-    "dev": "npm run build && npm run start"
+    "dev": "npm run build && npm run start",
+    "package": "npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
-    "electron": "^30.0.0",
+    "electron": "30.5.1",
+    "electron-builder": "^24.13.3",
     "typescript": "^5.4.0"
+  },
+  "build": {
+    "appId": "com.avas.desktop",
+    "productName": "AVAS",
+    "npmRebuild": false,
+    "beforeBuild": "scripts/prepareVendor.js",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "extraResources": [
+      { "from": "../backend/dist/avas-backend.exe", "to": "backend/avas-backend.exe" },
+      { "from": "../frontend/out", "to": "frontend/out" },
+      { "from": "vendor/tesseract", "to": "tesseract" },
+      { "from": "vendor/playwright-browsers", "to": "playwright-browsers" }
+    ],
+    "win": {
+      "target": "nsis"
+    }
   }
 }

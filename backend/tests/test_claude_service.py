@@ -29,6 +29,12 @@ class _FakeResponse:
 _VALID_JSON = '{"property_identification": {"district": "Pune"}}'
 
 
+@pytest.fixture(autouse=True)
+def _isolated_usage_db(monkeypatch, tmp_path) -> None:
+    """Claude calls now record usage (see usage_service.py) — keep that off the real db file."""
+    monkeypatch.setattr("app.core.db.settings.DATABASE_PATH", str(tmp_path / "test.db"))
+
+
 def test_raises_when_api_key_missing(monkeypatch) -> None:
     monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "")
     service = ClaudeService()

@@ -4,6 +4,8 @@ node_modules/
 out/
 dist/
 build/
+release/
+electron/vendor/
 
 # Python
 __pycache__/
@@ -14,7 +16,6 @@ venv/
 
 # Uploaded files (temporary storage, never committed)
 backend/data/
-docs
 
 # Env
 .env

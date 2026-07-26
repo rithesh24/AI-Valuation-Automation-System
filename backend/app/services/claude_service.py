@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.models.template_mapping import FieldMapping, SkeletonLocation
 from app.models.valuation_schema import ValuationReportData
 from app.services.prompt_builder import PromptBuilder
+from app.services.usage_service import UsageService
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class ClaudeService:
         retry_delay_seconds: float | None = None,
     ) -> None:
         self._prompt_builder = PromptBuilder()
+        self._usage_service = UsageService()
         self._max_retries = (
             max_retries if max_retries is not None else settings.ANTHROPIC_MAX_RETRIES
         )
@@ -76,6 +78,9 @@ class ClaudeService:
         except (json.JSONDecodeError, ValidationError) as exc:
             raise ClaudeServiceError(f"Claude response did not match the expected schema: {exc}") from exc
 
+        self._usage_service.record_usage(
+            response.usage.input_tokens, response.usage.output_tokens, stage="extraction"
+        )
         return ExtractionResult(
             data=data,
             input_tokens=response.usage.input_tokens,
@@ -94,9 +99,14 @@ class ClaudeService:
         raw_text = self._response_text(response)
         try:
             payload: dict = json.loads(raw_text)
-            return {name: FieldMapping.model_validate(value) for name, value in payload.items()}
+            mapping = {name: FieldMapping.model_validate(value) for name, value in payload.items()}
         except (json.JSONDecodeError, ValidationError, AttributeError) as exc:
             raise ClaudeServiceError(f"Claude response did not match the expected schema: {exc}") from exc
+
+        self._usage_service.record_usage(
+            response.usage.input_tokens, response.usage.output_tokens, stage="mapping"
+        )
+        return mapping
 
     def _send_with_retries(self, prompt: str, tools: list[dict]):
         last_error: Exception | None = None

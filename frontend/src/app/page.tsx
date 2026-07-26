@@ -1,15 +1,22 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import FileUploadSection from '@/components/FileUploadSection';
+import GenerateReportSection from '@/components/GenerateReportSection';
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hasPropertyDocument, setHasPropertyDocument] = useState(false);
+  const [hasTemplate, setHasTemplate] = useState(false);
 
   return (
     <main>
       <h1>AVAS</h1>
       <p>AI Valuation Automation System</p>
+      <p className="upload-description">
+        <Link href="/dashboard">View usage dashboard &rarr;</Link>
+      </p>
 
       <FileUploadSection
         title="Property Documents"
@@ -18,6 +25,7 @@ export default function Home() {
         accept=".pdf,.docx,.jpg,.jpeg,.png"
         sessionId={sessionId}
         onSessionId={setSessionId}
+        onFilesUploaded={() => setHasPropertyDocument(true)}
       />
 
       <FileUploadSection
@@ -27,6 +35,7 @@ export default function Home() {
         accept=".docx"
         sessionId={sessionId}
         onSessionId={setSessionId}
+        onFilesUploaded={() => setHasTemplate(true)}
       />
 
       <FileUploadSection
@@ -38,6 +47,10 @@ export default function Home() {
         onSessionId={setSessionId}
         optional
       />
+
+      {sessionId && hasTemplate && hasPropertyDocument && (
+        <GenerateReportSection sessionId={sessionId} />
+      )}
     </main>
   );
 }

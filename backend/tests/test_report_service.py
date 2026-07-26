@@ -5,6 +5,7 @@ from docx import Document
 
 from app.models.template_mapping import FieldMapping
 from app.models.valuation_schema import ComparableEvidence, ValuationReportData
+from app.services.claude_service import ClaudeService
 from app.services.report_service import ReportService, ReportServiceError
 
 
@@ -298,3 +299,87 @@ class TestRunQualityCheck:
 
         assert result.passed is True
         assert result.injection_failures == []
+
+
+class _FakeAnthropicUsage:
+    def __init__(self) -> None:
+        self.input_tokens = 100
+        self.output_tokens = 50
+
+
+class _FakeAnthropicResponse:
+    def __init__(self, text: str) -> None:
+        self.content = [type("Block", (), {"type": "text", "text": text})()]
+        self.usage = _FakeAnthropicUsage()
+
+
+class TestGenerateFullReport:
+    """Full-pipeline orchestration (upload -> parse -> extract -> map ->
+    inject) that POST /reports/generate-from-session drives. Only the Claude
+    API boundary is faked; uploads-on-disk, parsing, mapping cache, and
+    injection all run for real — same approach as
+    test_full_pipeline_integration.py, but exercised at the service layer."""
+
+    @pytest.fixture(autouse=True)
+    def _fake_claude_api_boundary(self, monkeypatch) -> None:
+        monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
+
+        def fake_call_claude(self, prompt, tools):  # noqa: ARG001
+            if tools:
+                return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
+            return _FakeAnthropicResponse(
+                '{"property_identification.district": {"location_id": "t0r0c1", "confidence": "high"}}'
+            )
+
+        monkeypatch.setattr(ClaudeService, "_call_claude", fake_call_claude)
+
+    def _upload_session(self, tmp_path: Path, monkeypatch) -> str:
+        monkeypatch.setattr("app.core.config.settings.UPLOAD_DIR", str(tmp_path / "uploads"))
+        session_id = "session-1"
+
+        template_path = tmp_path / "uploads" / session_id / "template" / "template.docx"
+        template_path.parent.mkdir(parents=True)
+        _build_template(template_path)
+
+        document_path = tmp_path / "uploads" / session_id / "property_document" / "deed.docx"
+        document_path.parent.mkdir(parents=True)
+        property_document = Document()
+        property_document.add_paragraph("Property located in Pune district.")
+        property_document.save(document_path)
+
+        return session_id
+
+    def test_full_pipeline_from_uploaded_session(self, tmp_path: Path, monkeypatch) -> None:
+        session_id = self._upload_session(tmp_path, monkeypatch)
+        output_path = tmp_path / "report.docx"
+
+        injection, quality_check, extracted_data = ReportService().generate_full_report(
+            session_id=session_id, output_path=str(output_path)
+        )
+
+        assert extracted_data.property_identification.district == "Pune"
+        assert "property_identification.district" in injection.filled_fields
+        assert quality_check.passed is True
+        assert output_path.is_file()
+
+    def test_raises_when_no_template_uploaded(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("app.core.config.settings.UPLOAD_DIR", str(tmp_path / "uploads"))
+
+        with pytest.raises(ReportServiceError, match="template"):
+            ReportService().generate_full_report(
+                session_id="empty-session", output_path=str(tmp_path / "report.docx")
+            )
+
+    def test_raises_when_no_property_documents_uploaded(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        monkeypatch.setattr("app.core.config.settings.UPLOAD_DIR", str(tmp_path / "uploads"))
+        session_id = "template-only-session"
+        template_path = tmp_path / "uploads" / session_id / "template" / "template.docx"
+        template_path.parent.mkdir(parents=True)
+        _build_template(template_path)
+
+        with pytest.raises(ReportServiceError, match="property document"):
+            ReportService().generate_full_report(
+                session_id=session_id, output_path=str(tmp_path / "report.docx")
+            )

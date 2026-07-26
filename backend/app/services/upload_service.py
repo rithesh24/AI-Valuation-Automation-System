@@ -104,3 +104,10 @@ class UploadService:
         return [
             self.save_temp_file(file, category, resolved_session_id) for file in files
         ]
+
+    def list_session_files(self, session_id: str, category: UploadCategory) -> list[str]:
+        """Paths of files previously uploaded to a session's category folder."""
+        session_dir = self._upload_dir / session_id / category.value
+        if not session_dir.is_dir():
+            return []
+        return sorted(str(path) for path in session_dir.iterdir() if path.is_file())
