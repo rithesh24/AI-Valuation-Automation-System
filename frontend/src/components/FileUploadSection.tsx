@@ -27,17 +27,17 @@ export default function FileUploadSection({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
-    const selected = event.target.files;
-    if (!selected || selected.length === 0) {
+  async function processFiles(files: File[]) {
+    if (files.length === 0) {
       return;
     }
 
     setError(null);
     setIsUploading(true);
     try {
-      const result = await uploadFiles(Array.from(selected), category, sessionId);
+      const result = await uploadFiles(files, category, sessionId);
       setUploadedFiles((previous) => [...previous, ...result]);
       onSessionId(result[0].session_id);
       onFilesUploaded?.(result);
@@ -45,18 +45,55 @@ export default function FileUploadSection({
       setError(err instanceof Error ? err.message : 'Upload failed.');
     } finally {
       setIsUploading(false);
-      event.target.value = '';
     }
   }
 
+  function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files;
+    void processFiles(selected ? Array.from(selected) : []);
+    event.target.value = '';
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    void processFiles(Array.from(event.dataTransfer.files));
+  }
+
   return (
-    <section className="upload-section">
+    <section className="card">
       <h2>
         {title}
         {optional && <span className="upload-optional"> (optional)</span>}
       </h2>
       <p className="upload-description">{description}</p>
-      <input type="file" multiple accept={accept} onChange={handleFilesSelected} disabled={isUploading} />
+
+      <label
+        className={`dropzone${isDragging ? ' is-dragging' : ''}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+      >
+        <span className="dropzone-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 16V4M12 4l-4 4M12 4l4 4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <p className="dropzone-title">Drag &amp; drop files here, or click to browse</p>
+        <p className="dropzone-hint">{accept.split(',').join(' · ')}</p>
+        <input
+          type="file"
+          multiple
+          accept={accept}
+          onChange={handleFilesSelected}
+          disabled={isUploading}
+        />
+      </label>
+
       {isUploading && <p className="upload-status">Uploading…</p>}
       {error && <p className="upload-error">{error}</p>}
       {uploadedFiles.length > 0 && (

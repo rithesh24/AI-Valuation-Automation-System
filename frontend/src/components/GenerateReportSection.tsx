@@ -45,13 +45,13 @@ export default function GenerateReportSection({ sessionId }: GenerateReportSecti
   }
 
   return (
-    <section className="upload-section">
+    <section className="card">
       <h2>Generate Report</h2>
       <p className="upload-description">
         Parses the uploaded property documents, runs AI extraction, and populates the uploaded
         template.
       </p>
-      <button onClick={handleGenerate} disabled={isGenerating}>
+      <button className="btn btn-primary" onClick={handleGenerate} disabled={isGenerating}>
         {isGenerating ? 'Generating…' : 'Generate Report'}
       </button>
 
@@ -59,7 +59,7 @@ export default function GenerateReportSection({ sessionId }: GenerateReportSecti
 
       {result && (
         <div>
-          <p className="upload-status">
+          <p className={`upload-status${result.quality_check.passed ? ' status-success' : ''}`}>
             Quality check: {result.quality_check.passed ? 'Passed' : 'Issues found'}
           </p>
           {result.quality_check.injection_failures.length > 0 && (
@@ -68,8 +68,14 @@ export default function GenerateReportSection({ sessionId }: GenerateReportSecti
               {result.quality_check.injection_failures.join(', ')}
             </p>
           )}
-          <button onClick={handlePreview}>Preview</button>{' '}
-          <a href={getReportDownloadUrl(result.report_id)}>Download .docx</a>
+          <div className="upload-status" style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
+            <button className="btn btn-secondary" onClick={handlePreview}>
+              Preview
+            </button>
+            <a className="btn btn-secondary" href={getReportDownloadUrl(result.report_id)}>
+              Download .docx
+            </a>
+          </div>
           {preview && <pre className="report-preview">{preview}</pre>}
         </div>
       )}

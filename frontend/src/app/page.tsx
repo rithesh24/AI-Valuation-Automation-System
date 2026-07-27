@@ -12,11 +12,35 @@ export default function Home() {
 
   return (
     <main>
-      <h1>AVAS</h1>
-      <p>AI Valuation Automation System</p>
-      <p className="upload-description">
-        <Link href="/dashboard">View usage dashboard &rarr;</Link>
-      </p>
+      <header className="page-header">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"
+              />
+            </svg>
+          </span>
+          AVAS
+        </div>
+        <Link href="/dashboard" className="nav-link">
+          View usage dashboard &rarr;
+        </Link>
+      </header>
+
+      <section className="hero">
+        <span className="badge">AI Powered</span>
+        <h1>
+          <span className="gradient-text">Valuation</span> reports, automated
+        </h1>
+        <p>
+          Upload property documents and your bank&apos;s template — AVAS extracts the facts,
+          researches comparables, and fills the report for you.
+        </p>
+      </section>
 
       <FileUploadSection
         title="Property Documents"

@@ -164,3 +164,12 @@
 - Verified both bundled dependencies actually work, not just that the files copied: ran the bundled `tesseract.exe` against a rendered test image via `pytesseract` (correctly read the text back), and launched the bundled Chromium via `PLAYWRIGHT_BROWSERS_PATH` (rendered a page, closed cleanly) — both against the exact staged paths the installer ships. Re-verified the full packaged-app flow (backend auto-launch, health-check, local frontend server, `/dashboard`) still works with the larger resource set.
 - Code-signing decision: skipped for this build, per your call — the client will see a one-time "Unknown Publisher" SmartScreen warning. Documented as a deliberate, revisitable choice, not an oversight.
 - Same NSIS-installer blocker as D21 (Developer Mode/elevated terminal needed on this dev machine) — unrelated to this bundling work, unchanged. Full backend suite re-verified: 80/80.
+
+## Frontend visual redesign (2026-07-27)
+
+- Reskinned the entire frontend (previously plain white/black-on-white placeholder styling from Phase 2/7) into a dark theme with ember-orange accents, gradient headline text, glass-bordered cards, pill nav/buttons/badges, and a subtle dotted-grid background texture — modeled on a reference site the client supplied (screenshots, not live-fetched — no browser tool available this session).
+- Files touched: `frontend/src/app/globals.css` (full rewrite), `layout.tsx` (added `next/font/google` Sora for headings), `page.tsx` and `dashboard/page.tsx` (hero sections, restyled headers with a gear/automation icon on the brand mark), `FileUploadSection.tsx` (restyled as a dropzone card, added real drag-and-drop), `GenerateReportSection.tsx` (button/status restyle).
+- No new npm dependencies — plain CSS custom properties + Next's built-in font loader. See `docs/DECISIONS.md` D24.
+- Verified: full test suite still passes unchanged (10/10 — tests query by text/role, not styling), `next build` compiles and type-checks cleanly, both routes manually exercised against a running backend (dashboard fetch confirmed working after resolving a stale dev-server-on-3000/CORS mismatch, unrelated to the redesign itself).
+- Not a roadmap item (all phases already complete) — this was a polish pass on top of the finished Phase 2/7 UI, at the client's request.
+- Two items remain open from before this session, still blocked: live end-to-end test vs. the real Claude API (no `ANTHROPIC_API_KEY`), and the NSIS installer build (needs Developer Mode/elevated terminal).
