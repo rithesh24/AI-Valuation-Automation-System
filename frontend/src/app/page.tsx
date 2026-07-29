@@ -26,9 +26,14 @@ export default function Home() {
           </span>
           AVAS
         </div>
-        <Link href="/dashboard" className="nav-link">
-          View usage dashboard &rarr;
-        </Link>
+        <div style={{ display: 'flex', gap: '1.25rem' }}>
+          <Link href="/settings" className="nav-link">
+            Settings
+          </Link>
+          <Link href="/dashboard" className="nav-link">
+            View usage dashboard &rarr;
+          </Link>
+        </div>
       </header>
 
       <section className="hero">
@@ -54,9 +59,9 @@ export default function Home() {
 
       <FileUploadSection
         title="Bank Valuation Template"
-        description="The bank's prescribed report template (.docx)."
+        description="The bank's prescribed report template (.docx or .pdf)."
         category="template"
-        accept=".docx"
+        accept=".docx,.pdf"
         sessionId={sessionId}
         onSessionId={setSessionId}
         onFilesUploaded={() => setHasTemplate(true)}
@@ -72,8 +77,15 @@ export default function Home() {
         optional
       />
 
-      {sessionId && hasTemplate && hasPropertyDocument && (
+      {sessionId && hasTemplate && hasPropertyDocument ? (
         <GenerateReportSection sessionId={sessionId} />
+      ) : (
+        <p className="upload-status">
+          {hasPropertyDocument ? '✓' : '—'} Property document uploaded
+          {'  ·  '}
+          {hasTemplate ? '✓' : '—'} Bank template uploaded
+          {' — upload both to generate a report.'}
+        </p>
       )}
     </main>
   );

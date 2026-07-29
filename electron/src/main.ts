@@ -31,8 +31,14 @@ function backendExecutablePath(): string {
 }
 
 function startBackend(): void {
+  // The backend's data paths (SQLite DB, uploads, reports, the client-set
+  // API key file) are relative to its own working directory. Without an
+  // explicit cwd, Node defaults to Electron's own — not guaranteed writable
+  // for a standard user (e.g. under Program Files). app.getPath('userData')
+  // is a per-user directory Electron creates and guarantees is writable.
   backendProcess = spawn(backendExecutablePath(), [], {
     windowsHide: true,
+    cwd: app.getPath('userData'),
     env: { ...process.env, AVAS_BACKEND_PORT: String(BACKEND_PORT) },
   });
   backendProcess.stdout?.on('data', (chunk) => console.log(`[backend] ${chunk}`));

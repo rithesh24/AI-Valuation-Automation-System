@@ -16,10 +16,11 @@ from app.services.usage_service import UsageService
 
 logger = logging.getLogger(__name__)
 
-_MAX_OUTPUT_TOKENS = 8192
+_MAX_OUTPUT_TOKENS = 64000
 # Anthropic's hosted web-search server tool (D8 Tier 2 comparable research).
-# Tool-type identifiers are versioned by Anthropic; bump this if the API rejects it.
-_WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search"}
+# _20260209 adds server-side dynamic filtering (Sonnet 5/Opus 4.6+); bump this
+# if the API rejects it or Anthropic ships a newer variant.
+_WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 _RETRYABLE_ERRORS = (
     anthropic.APIConnectionError,
     anthropic.RateLimitError,
@@ -63,7 +64,7 @@ class ClaudeService:
         """Runs Stage 1 (Extraction): documents + Tier 1 data -> ValuationReportData."""
         if not settings.ANTHROPIC_API_KEY:
             raise ClaudeServiceError(
-                "ANTHROPIC_API_KEY is not configured. Add it to backend/.env to enable AI extraction."
+                "ANTHROPIC_API_KEY is not configured. Set it from the app's Settings screen."
             )
 
         prompt = self._prompt_builder.build_extraction_prompt(
@@ -91,7 +92,7 @@ class ClaudeService:
         """Runs Stage 2 (Template Mapping): schema fields + template skeleton -> locations."""
         if not settings.ANTHROPIC_API_KEY:
             raise ClaudeServiceError(
-                "ANTHROPIC_API_KEY is not configured. Add it to backend/.env to enable AI extraction."
+                "ANTHROPIC_API_KEY is not configured. Set it from the app's Settings screen."
             )
 
         prompt = self._prompt_builder.build_mapping_prompt(skeleton)
@@ -126,13 +127,20 @@ class ClaudeService:
         )
 
     def _call_claude(self, prompt: str, tools: list[dict]):
+        """Sonnet 5 runs adaptive thinking by default (no `thinking` param set —
+        that's a deliberate choice, not an oversight) and Stage 1's web-search
+        tool can chain several search/code-execution rounds — both eat into
+        max_tokens before the final JSON text block is written. 64000 (up from
+        the original 8192) gives real headroom; streaming is required for any
+        max_tokens this large to avoid an SDK HTTP timeout on a slow turn."""
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        return client.messages.create(
+        with client.messages.stream(
             model=settings.ANTHROPIC_MODEL,
             max_tokens=_MAX_OUTPUT_TOKENS,
             tools=tools,
             messages=[{"role": "user", "content": prompt}],
-        )
+        ) as stream:
+            return stream.get_final_message()
 
     def _response_text(self, response) -> str:
         text_blocks = [block.text for block in response.content if block.type == "text"]

@@ -2,7 +2,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # ".env" is the developer/dev-machine config. "data/local.env" is written
+    # at runtime by settings_service.py (the in-app Settings screen, for a
+    # packaged build where the client has no .env to hand-edit) and loads
+    # second, so a client-entered API key overrides whatever (if anything)
+    # ".env" provided.
+    model_config = SettingsConfigDict(
+        env_file=(".env", "data/local.env"), env_file_encoding="utf-8"
+    )
 
     ENV: str = "development"
     DATABASE_PATH: str = "data/avas.db"

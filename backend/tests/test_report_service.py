@@ -1,12 +1,13 @@
 from pathlib import Path
 
+import fitz
 import pytest
 from docx import Document
 
 from app.models.template_mapping import FieldMapping
 from app.models.valuation_schema import ComparableEvidence, ValuationReportData
 from app.services.claude_service import ClaudeService
-from app.services.report_service import ReportService, ReportServiceError
+from app.services.report_service import ReportService, ReportServiceError, _resolve_template_path
 
 
 def _build_template(path: Path) -> None:
@@ -156,6 +157,92 @@ class TestMappingCache:
         service.get_or_create_mapping(str(path), claude_service=claude, force_regenerate=True)
 
         assert claude.calls == 2
+
+
+def _build_pdf_template(path: Path) -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "VALUATION REPORT")
+    page.insert_text((72, 110), "Name of Owner")
+    document.save(str(path))
+    document.close()
+
+
+class TestPdfTemplateSupport:
+    """A born-digital PDF template is converted to .docx once, then flows
+    through the exact same Stage 2/3 pipeline as a native .docx template."""
+
+    def test_pdf_is_converted_and_skeleton_matches_its_text(self, tmp_path: Path) -> None:
+        pdf_path = tmp_path / "template.pdf"
+        _build_pdf_template(pdf_path)
+
+        resolved = _resolve_template_path(str(pdf_path))
+        converted_docx = tmp_path / ".converted" / "template.docx"
+
+        assert resolved == str(converted_docx)
+        assert converted_docx.exists()
+        skeleton = ReportService().extract_template_skeleton(resolved)
+        combined_text = " ".join(loc.text for loc in skeleton)
+        assert "VALUATION REPORT" in combined_text
+        assert "Name of Owner" in combined_text
+
+    def test_docx_template_is_returned_unchanged(self, tmp_path: Path) -> None:
+        path = tmp_path / "template.docx"
+        _build_template(path)
+
+        assert _resolve_template_path(str(path)) == str(path)
+
+    def test_conversion_is_cached_not_repeated(self, tmp_path: Path, monkeypatch) -> None:
+        pdf_path = tmp_path / "template.pdf"
+        _build_pdf_template(pdf_path)
+        _resolve_template_path(str(pdf_path))
+
+        conversion_calls = []
+        import pdf2docx
+
+        original_converter = pdf2docx.Converter
+
+        def _tracking_converter(*args, **kwargs):
+            conversion_calls.append(1)
+            return original_converter(*args, **kwargs)
+
+        monkeypatch.setattr("pdf2docx.Converter", _tracking_converter)
+
+        _resolve_template_path(str(pdf_path))
+
+        assert conversion_calls == []
+
+    def test_get_or_create_mapping_accepts_a_pdf_template(self, tmp_path: Path) -> None:
+        pdf_path = tmp_path / "template.pdf"
+        _build_pdf_template(pdf_path)
+        fake_mapping = {"ownership_and_title.present_owners": FieldMapping(location_id="p0")}
+        claude = _FakeClaudeService(fake_mapping)
+
+        mapping, _ = ReportService().get_or_create_mapping(str(pdf_path), claude_service=claude)
+
+        assert claude.calls == 1
+        assert mapping == fake_mapping
+
+    def test_inject_data_fills_a_converted_pdf_template(self, tmp_path: Path) -> None:
+        pdf_path = tmp_path / "template.pdf"
+        _build_pdf_template(pdf_path)
+        service = ReportService()
+
+        resolved = _resolve_template_path(str(pdf_path))
+        skeleton = service.extract_template_skeleton(resolved)
+        owner_location = next(loc for loc in skeleton if "Name of Owner" in loc.text)
+        mapping = {
+            "ownership_and_title.present_owners": FieldMapping(location_id=owner_location.location_id)
+        }
+        data = ValuationReportData()
+        data.ownership_and_title.present_owners = "John Smith"
+        output_path = tmp_path / "output.docx"
+
+        result = service.inject_data(str(pdf_path), mapping, data, str(output_path))
+
+        assert "ownership_and_title.present_owners" in result.filled_fields
+        output_text = "\n".join(p.text for p in Document(str(output_path)).paragraphs)
+        assert "John Smith" in output_text
 
     def test_get_cached_mapping_returns_none_when_absent(self, tmp_path: Path) -> None:
         path = tmp_path / "template.docx"

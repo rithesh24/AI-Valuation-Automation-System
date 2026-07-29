@@ -35,10 +35,20 @@ def test_upload_rejects_disallowed_extension_for_template():
     response = client.post(
         "/uploads",
         data={"category": "template"},
-        files={"files": ("template.pdf", io.BytesIO(b"not a docx"), "application/pdf")},
+        files={"files": ("template.txt", io.BytesIO(b"not a docx or pdf"), "text/plain")},
     )
     assert response.status_code == 400
     assert "not allowed" in response.json()["detail"]
+
+
+def test_upload_accepts_pdf_template():
+    response = client.post(
+        "/uploads",
+        data={"category": "template"},
+        files={"files": ("template.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
+    )
+    assert response.status_code == 200
+    assert response.json()[0]["category"] == "template"
 
 
 def test_upload_rejects_oversized_file():

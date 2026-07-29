@@ -52,6 +52,7 @@
 - [x] Automated final quality-check validation pass
 - [x] Preview report
 - [x] Download DOCX
+- [x] PDF bank-template support (client feedback, 2026-07-29) — converts to .docx once, reuses the existing pipeline unchanged
 
 ---
 
@@ -66,11 +67,12 @@
 - [x] Unit tests
 - [x] Integration tests
 - [x] UI testing
-- [ ] Live end-to-end test against the real Claude API (blocked until `ANTHROPIC_API_KEY` is set)
+- [ ] Live end-to-end test against the real Claude API — key is now configured and the pipeline was run live; fixed a real max_tokens/adaptive-thinking bug in the process (see D27), but hit a second, different, still-unresolved error ("Claude response did not match the expected schema: Expecting value...") — not yet passing end-to-end
 
 ---
 
 ## Phase 9 - Production
 - [x] Build Electron app (auto-launches the bundled backend, serves the frontend locally — see D21)
 - [ ] Package installer (Chromium + Tesseract now bundled, client needs to install nothing — D23; NSIS build itself still blocked on Developer Mode/elevated terminal for this dev machine — pipeline verified correct via the unpacked build, see D21)
+- [x] Client-facing Settings screen for the Anthropic API key, no .env editing required (2026-07-29) — see D26
 - [x] Documentation (README packaging section)

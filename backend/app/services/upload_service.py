@@ -17,7 +17,7 @@ class UploadCategory(str, Enum):
 
 ALLOWED_EXTENSIONS: dict[UploadCategory, set[str]] = {
     UploadCategory.PROPERTY_DOCUMENT: {".pdf", ".docx", ".jpg", ".jpeg", ".png"},
-    UploadCategory.TEMPLATE: {".docx"},
+    UploadCategory.TEMPLATE: {".docx", ".pdf"},
     UploadCategory.SUPPORTING_IMAGE: {".jpg", ".jpeg", ".png"},
 }
 

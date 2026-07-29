@@ -105,3 +105,33 @@ export async function getReportPreview(reportId: string): Promise<string> {
 export function getReportDownloadUrl(reportId: string): string {
   return `${API_BASE_URL}/reports/${reportId}/download`;
 }
+
+export interface ApiKeyStatus {
+  configured: boolean;
+}
+
+export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
+  const response = await fetch(`${API_BASE_URL}/settings/api-key`);
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to load settings with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function setApiKey(apiKey: string): Promise<ApiKeyStatus> {
+  const response = await fetch(`${API_BASE_URL}/settings/api-key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to save API key with status ${response.status}`);
+  }
+
+  return response.json();
+}

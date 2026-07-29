@@ -36,6 +36,33 @@ class ReportServiceError(Exception):
     """Raised when a template can't be read. Message is safe to show the user."""
 
 
+def _resolve_template_path(template_path: str) -> str:
+    """PDF templates are converted to .docx once (cached alongside the source,
+    outside the upload session's scanned template folder — see
+    upload_service.list_session_files) so extract_template_skeleton()/
+    inject_data() never need to know a template started as a PDF (D5's
+    clone-and-mutate injection is docx-only)."""
+    path = Path(template_path)
+    if path.suffix.lower() != ".pdf":
+        return template_path
+
+    cache_dir = path.parent / ".converted"
+    cache_dir.mkdir(exist_ok=True)
+    docx_path = cache_dir / f"{path.stem}.docx"
+    if not docx_path.exists():
+        try:
+            from pdf2docx import Converter
+
+            converter = Converter(str(path))
+            try:
+                converter.convert(str(docx_path))
+            finally:
+                converter.close()
+        except Exception as exc:
+            raise ReportServiceError(f"Could not convert PDF template to DOCX: {exc}") from exc
+    return str(docx_path)
+
+
 class InjectionResult(BaseModel):
     output_path: str
     filled_fields: list[str] = []
@@ -143,6 +170,7 @@ class ReportService:
         (D6's manual "regenerate mapping" action) — reused templates are
         mapped once, not once per report.
         """
+        template_path = _resolve_template_path(template_path)
         skeleton = self.extract_template_skeleton(template_path)
         skeleton_hash = self.skeleton_hash(skeleton)
 
@@ -170,6 +198,7 @@ class ReportService:
         column position each subfield's mapped location already encodes —
         no separate column-mapping format needed from Claude.
         """
+        template_path = _resolve_template_path(template_path)
         try:
             document = Document(template_path)
         except Exception as exc:

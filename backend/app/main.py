@@ -5,6 +5,7 @@ from app.api.routes.easr import router as easr_router
 from app.api.routes.health import router as health_router
 from app.api.routes.rera import router as rera_router
 from app.api.routes.reports import router as reports_router
+from app.api.routes.settings import router as settings_router
 from app.api.routes.uploads import router as uploads_router
 from app.api.routes.usage import router as usage_router
 from app.core.config import settings
@@ -28,3 +29,4 @@ app.include_router(easr_router)
 app.include_router(rera_router)
 app.include_router(reports_router)
 app.include_router(usage_router)
+app.include_router(settings_router)

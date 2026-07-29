@@ -173,3 +173,34 @@
 - Verified: full test suite still passes unchanged (10/10 — tests query by text/role, not styling), `next build` compiles and type-checks cleanly, both routes manually exercised against a running backend (dashboard fetch confirmed working after resolving a stale dev-server-on-3000/CORS mismatch, unrelated to the redesign itself).
 - Not a roadmap item (all phases already complete) — this was a polish pass on top of the finished Phase 2/7 UI, at the client's request.
 - Two items remain open from before this session, still blocked: live end-to-end test vs. the real Claude API (no `ANTHROPIC_API_KEY`), and the NSIS installer build (needs Developer Mode/elevated terminal).
+
+## Client feedback — PDF bank templates (2026-07-29)
+
+- Client feedback after a progress demo: bank templates should also be accepted as `.pdf`, not just `.docx`.
+- Added a conversion step: a PDF template is converted to `.docx` once via `pdf2docx` and cached under a `.converted/` subfolder next to the source file, kept outside the session's scanned upload folder so the "exactly one template" check still sees only the original upload. Every downstream stage is completely unchanged — see D25.
+- `UploadService`'s `ALLOWED_EXTENSIONS[TEMPLATE]` now includes `.pdf`. Frontend template upload card accepts `.docx,.pdf`.
+- Added `backend/tests/test_report_service.py::TestPdfTemplateSupport` (5 tests). Fixed `test_uploads.py`'s template-rejection test, which had asserted `.pdf` was rejected — no longer true; swapped to `.txt`, added a test confirming `.pdf` is accepted.
+- Full suite at the time: backend 86/86, frontend 10/10, `next build` clean.
+
+## API key configured; verified live, one real bug fixed (2026-07-29)
+
+- Client added a real `ANTHROPIC_API_KEY` to `backend/.env`. Verified with a direct minimal live call before touching any code — confirmed working (`model: claude-sonnet-5`, real response).
+- Reviewed `claude_service.py` against current Anthropic API docs now that a key exists to test against: `_WEB_SEARCH_TOOL` was still `web_search_20250305` (the old basic variant) — bumped to `web_search_20260209`, which adds server-side dynamic filtering (Sonnet 5-supported).
+- Reviewed the D18 placeholder pricing ($3/$15 per MTok) against Sonnet 5's actual current pricing (intro pricing of $2/$10 applies through 2026-08-31). Client's call: keep the post-intro list price ($3/$15) rather than the temporary intro rate, so the dashboard's cost estimate doesn't need revisiting again in a month. No code change needed — it already matched.
+- Confirmed the usage dashboard's token counts are exact (`response.usage.input_tokens`/`output_tokens`, straight from the Anthropic API — not a client-side estimate); only the dollar conversion is an estimate based on the configured per-token rate. Confirmed usage persists in `data/avas.db` (a real file, not scoped to any upload session) — survives app restarts.
+
+## Frontend fixes and the client-facing Settings screen (2026-07-29)
+
+- Fixed a UX gap: the "Generate Report" button only appears once both a template and a property document are uploaded (enforced by the backend too), but there was no on-screen indication of that requirement — it just silently never appeared. Added a `✓`/`—` status line in `page.tsx` showing what's still needed.
+- Built a `/settings` page so the client can enter their own API key from inside the app (backend: `settings_service.py`, `api/routes/settings.py`; frontend: `settings/page.tsx`, restyled to match the app's dark/ember design system with an icon header and status pill). Discovered and fixed a real packaging gap in the process: the Electron-spawned backend had no explicit writable working directory in production. Full detail in D26.
+- A live "verify key against Anthropic before saving" feature was added, then reverted at the client's request after a frontend crash during testing (later traced to an unrelated stale `.next` dev-cache issue — recorded in D26 for the full story either way).
+- Separately diagnosed and fixed two dev-environment issues encountered while testing: duplicate Next.js dev servers running on ports 3000/3001 simultaneously (stale process from an earlier restart) causing broken client-side navigation, and a corrupted `.next` webpack cache (`Cannot find module './310.js'`) from clearing the cache while a dev server was still writing to it. Both resolved by killing the stray processes and doing a clean cache clear + restart — not code bugs.
+- Added `backend/tests/test_settings_service.py`, `backend/tests/test_settings_route.py`, `frontend/src/app/settings/page.test.tsx`. Backend 101/101, frontend 14/14 at the time (before the verification feature was reverted; unaffected either way since it was cleanly backed out).
+
+## Phase 8 — first live end-to-end run, one real bug found and fixed, one still open (2026-07-29)
+
+- With a real key finally available, ran the actual pipeline live for the first time (not against fakes): generated a small synthetic template + property document, uploaded them through `/uploads`, called `/reports/generate-from-session` against a real backend process.
+- First run failed: `ClaudeServiceError: Claude returned no text content.` Root-caused with a diagnostic call against the raw API rather than guessing: `stop_reason: max_tokens`, with the vast majority of the 8192-token budget consumed by Sonnet 5's adaptive thinking (on by default per the client's earlier call to leave it on) before any JSON output was written. Fixed — see D27.
+- Re-ran live after the fix: Stage 1 extraction succeeded this time (confirmed via a real `200 OK` from Anthropic in the backend log). The overall request then failed differently: `Claude response did not match the expected schema: Expecting value: line 1 column 1 (char 0)` — some stage returned an empty or non-JSON body. **Not yet root-caused** — session ended before this could be investigated further.
+- Cleaned up all live-test artifacts afterward (throwaway fixture/diagnostic scripts, uploaded session files, empty report directories) — same convention as D20's live smoke test.
+- Phase 8's live-test roadmap item stays unchecked — real progress, not yet fully green.
