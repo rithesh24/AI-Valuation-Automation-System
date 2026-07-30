@@ -119,7 +119,7 @@ class TestGenerateFromSession:
         session_id = "session-route-1"
         self._upload_session(tmp_path, session_id)
 
-        def fake_call_claude(self, prompt, tools):  # noqa: ARG001
+        def fake_call_claude(self, prompt, tools, on_status=None):  # noqa: ARG001
             if tools:
                 return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
             return _FakeAnthropicResponse(
@@ -139,6 +139,13 @@ class TestGenerateFromSession:
 
         preview = client.get(f"/reports/{body['report_id']}/preview")
         assert "Pune" in preview.json()["text"]
+
+        progress = client.get(f"/reports/progress/{session_id}")
+        assert progress.json() == {"percent": 100, "stage": "Done"}
+
+    def test_progress_defaults_to_zero_for_an_unknown_session(self) -> None:
+        response = client.get("/reports/progress/never-started")
+        assert response.json() == {"percent": 0, "stage": "idle"}
 
     def test_no_uploaded_documents_returns_400(self) -> None:
         response = client.post(

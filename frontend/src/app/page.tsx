@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import EasrLookupSection from '@/components/EasrLookupSection';
 import FileUploadSection from '@/components/FileUploadSection';
 import GenerateReportSection from '@/components/GenerateReportSection';
 
@@ -9,6 +10,7 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hasPropertyDocument, setHasPropertyDocument] = useState(false);
   const [hasTemplate, setHasTemplate] = useState(false);
+  const [tier1OfficialData, setTier1OfficialData] = useState<string | null>(null);
 
   return (
     <main>
@@ -77,8 +79,10 @@ export default function Home() {
         optional
       />
 
+      <EasrLookupSection onResult={setTier1OfficialData} />
+
       {sessionId && hasTemplate && hasPropertyDocument ? (
-        <GenerateReportSection sessionId={sessionId} />
+        <GenerateReportSection sessionId={sessionId} tier1OfficialData={tier1OfficialData} />
       ) : (
         <p className="upload-status">
           {hasPropertyDocument ? '✓' : '—'} Property document uploaded

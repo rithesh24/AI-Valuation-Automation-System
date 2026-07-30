@@ -46,7 +46,7 @@ def _isolated_storage(tmp_path: Path, monkeypatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _fake_claude_api_boundary(monkeypatch) -> None:
-    def fake_call_claude(self, prompt, tools):  # noqa: ARG001
+    def fake_call_claude(self, prompt, tools, on_status=None):  # noqa: ARG001
         if tools:  # extraction attaches the web-search tool (D8 Tier 2); mapping doesn't
             return _FakeResponse('{"property_identification": {"district": "Pune"}}')
         return _FakeResponse(

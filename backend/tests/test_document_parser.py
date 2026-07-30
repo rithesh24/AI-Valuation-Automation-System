@@ -49,6 +49,20 @@ class TestExtractPdfText:
         with pytest.raises(DocumentParserError):
             parser.extract_pdf_text("does_not_exist.pdf")
 
+    def test_on_page_callback_fires_once_per_page(self, parser: DocumentParser, tmp_path: Path) -> None:
+        pdf_path = tmp_path / "three_pages.pdf"
+        document = fitz.open()
+        for i in range(3):
+            page = document.new_page()
+            page.insert_text((72, 72), f"Page {i + 1} text content")
+        document.save(pdf_path)
+        document.close()
+
+        seen: list[tuple[int, int]] = []
+        parser.extract_pdf_text(str(pdf_path), on_page=lambda page, total: seen.append((page, total)))
+
+        assert seen == [(1, 3), (2, 3), (3, 3)]
+
     @requires_tesseract
     def test_low_text_page_falls_back_to_ocr(
         self, parser: DocumentParser, tmp_path: Path

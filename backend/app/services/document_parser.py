@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Callable
 
 import fitz  # PyMuPDF
 import pytesseract
@@ -28,12 +29,18 @@ class DocumentParser:
             else settings.OCR_TRIGGER_CHAR_THRESHOLD
         )
 
-    def extract_pdf_text(self, file_path: str) -> str:
+    def extract_pdf_text(
+        self, file_path: str, on_page: Callable[[int, int], None] | None = None
+    ) -> str:
         """Extracts text from a PDF, page by page.
 
         A page whose extracted text falls below the OCR trigger threshold
         (D11 in docs/DECISIONS.md) is treated as a scanned image and OCR'd
         instead, so mixed text/scanned PDFs are handled transparently.
+
+        `on_page(page_number, total_pages)`, if given, is called after each
+        page — the only per-page progress signal available, since OCR pages
+        can each take real time.
         """
         try:
             document = fitz.open(file_path)
@@ -42,11 +49,14 @@ class DocumentParser:
 
         try:
             pages_text = []
-            for page in document:
+            total_pages = document.page_count
+            for index, page in enumerate(document):
                 text = page.get_text().strip()
                 if len(text) < self._ocr_char_threshold:
                     text = self._ocr_pdf_page(page)
                 pages_text.append(text)
+                if on_page:
+                    on_page(index + 1, total_pages)
             return "\n\n".join(pages_text)
         finally:
             document.close()
@@ -67,7 +77,9 @@ class DocumentParser:
 
         return "\n".join(parts)
 
-    def ocr_scanned_document(self, file_path: str) -> str:
+    def ocr_scanned_document(
+        self, file_path: str, on_page: Callable[[int, int], None] | None = None
+    ) -> str:
         """Runs OCR unconditionally: every page of a PDF, or a single image file
         (.jpg/.jpeg/.png — property documents may be uploaded as photos of a scan).
         """
@@ -77,7 +89,10 @@ class DocumentParser:
                 image = Image.open(file_path)
             except Exception as exc:
                 raise DocumentParserError(f"Could not open image '{file_path}': {exc}") from exc
-            return self._run_ocr(image)
+            text = self._run_ocr(image)
+            if on_page:
+                on_page(1, 1)
+            return text
 
         try:
             document = fitz.open(file_path)
@@ -85,7 +100,13 @@ class DocumentParser:
             raise DocumentParserError(f"Could not open PDF '{file_path}': {exc}") from exc
 
         try:
-            return "\n\n".join(self._ocr_pdf_page(page) for page in document)
+            total_pages = document.page_count
+            pages_text = []
+            for index, page in enumerate(document):
+                pages_text.append(self._ocr_pdf_page(page))
+                if on_page:
+                    on_page(index + 1, total_pages)
+            return "\n\n".join(pages_text)
         finally:
             document.close()
 

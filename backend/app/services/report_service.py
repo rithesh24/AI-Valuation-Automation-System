@@ -14,6 +14,7 @@ import json
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -26,6 +27,7 @@ from app.models.template_mapping import FieldMapping, SkeletonLocation
 from app.models.valuation_schema import INFO_NOT_AVAILABLE, ValuationReportData
 from app.services.claude_service import ClaudeService
 from app.services.document_parser import DocumentParser, DocumentParserError
+from app.services.progress_tracker import set_progress
 from app.services.upload_service import UploadCategory, UploadService
 
 _TABLE_CELL_LOCATION_RE = re.compile(r"^t(\d+)r(\d+)c(\d+)$")
@@ -121,8 +123,24 @@ class ReportService:
         return locations
 
     def skeleton_hash(self, skeleton: list[SkeletonLocation]) -> str:
-        """Hash used to key the Stage 2 mapping cache (D6)."""
-        payload = json.dumps([loc.model_dump() for loc in skeleton], sort_keys=True)
+        """Hash used to key the Stage 2 mapping cache (D6).
+
+        Real client "templates" are previous filled reports, not blank forms
+        (D28): every location's `text` is that prior report's data, and even
+        `context` (sibling cell text, in a label|value row) leaks the value
+        for the label cell's own context entry. No text field is reliably
+        stable across two different filled instances of the same bank
+        format, so the hash covers structure only — each location's `type`
+        and `location_id` (which encodes paragraph position / table row+col)
+        — deliberately ignoring all text. Trade-off: renaming a label without
+        adding/removing a location no longer invalidates the cache; the
+        manual "regenerate mapping" override (D6) is the safety valve for
+        that case.
+        """
+        payload = json.dumps(
+            [{"type": loc.type, "location_id": loc.location_id} for loc in skeleton],
+            sort_keys=False,
+        )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def get_cached_mapping(self, skeleton_hash: str) -> dict[str, FieldMapping] | None:
@@ -275,21 +293,57 @@ class ReportService:
                 f"No property documents uploaded for session '{session_id}'."
             )
 
-        document_texts = {
-            Path(path).name: _parse_document(document_parser, path) for path in document_paths
-        }
+        document_texts: dict[str, str] = {}
+        total_docs = len(document_paths)
+        parsing_span = 15  # this stage covers 5%..20%
+        for doc_index, path in enumerate(document_paths):
+            name = Path(path).name
+            doc_base = 5 + int(parsing_span * doc_index / total_docs)
+            doc_share = parsing_span / total_docs
+
+            def on_page(
+                page_number: int,
+                total_pages: int,
+                _base: int = doc_base,
+                _share: float = doc_share,
+                _name: str = name,
+                _doc_index: int = doc_index,
+            ) -> None:
+                percent = _base + int(_share * page_number / max(total_pages, 1))
+                set_progress(
+                    session_id,
+                    percent,
+                    f"Parsing {_name} — page {page_number}/{total_pages} "
+                    f"({_doc_index + 1}/{total_docs} documents)",
+                )
+
+            set_progress(session_id, doc_base, f"Parsing {name} ({doc_index + 1}/{total_docs} documents)")
+            document_texts[name] = _parse_document(document_parser, path, on_page=on_page)
+
+        set_progress(session_id, 20, "Extracting property data and researching comparables")
+
+        def on_extraction_status(label: str, block_count: int) -> None:
+            set_progress(session_id, min(20 + 5 * block_count, 55), label)
 
         extraction = claude_service.extract_valuation_data(
             document_texts=document_texts,
             tier1_official_data=tier1_official_data,
             valuation_date=valuation_date,
+            on_status=on_extraction_status,
         )
 
+        set_progress(session_id, 60, "Mapping fields to the template")
         mapping, _ = self.get_or_create_mapping(
             template_path, claude_service=claude_service, force_regenerate=force_regenerate_mapping
         )
+
+        set_progress(session_id, 80, "Populating the template")
         injection = self.inject_data(template_path, mapping, extraction.data, output_path)
+
+        set_progress(session_id, 95, "Running quality check")
         quality_check = self.run_quality_check(mapping, extraction.data)
+
+        set_progress(session_id, 100, "Done")
         return injection, quality_check, extraction.data
 
     def run_quality_check(
@@ -317,15 +371,19 @@ class ReportService:
         )
 
 
-def _parse_document(document_parser: DocumentParser, path: str) -> str:
+def _parse_document(
+    document_parser: DocumentParser,
+    path: str,
+    on_page: Callable[[int, int], None] | None = None,
+) -> str:
     extension = Path(path).suffix.lower()
     try:
         if extension == ".pdf":
-            return document_parser.extract_pdf_text(path)
+            return document_parser.extract_pdf_text(path, on_page=on_page)
         if extension == ".docx":
             return document_parser.extract_docx_text(path)
         if extension in _OCR_EXTENSIONS:
-            return document_parser.ocr_scanned_document(path)
+            return document_parser.ocr_scanned_document(path, on_page=on_page)
     except DocumentParserError as exc:
         raise ReportServiceError(f"Could not parse '{path}': {exc}") from exc
     raise ReportServiceError(f"Unsupported document type for '{path}'.")

@@ -75,16 +75,57 @@ export interface GenerateReportResult {
   quality_check: QualityCheckResult;
 }
 
-export async function generateReportFromSession(sessionId: string): Promise<GenerateReportResult> {
+export async function generateReportFromSession(
+  sessionId: string,
+  tier1OfficialData?: string | null
+): Promise<GenerateReportResult> {
   const response = await fetch(`${API_BASE_URL}/reports/generate-from-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      ...(tier1OfficialData ? { tier1_official_data: tier1OfficialData } : {}),
+    }),
   });
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.detail ?? `Report generation failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface EASRSearchInput {
+  year: string;
+  district: string;
+  taluka?: string | null;
+  village: string;
+  district_option?: string | null;
+  survey_no?: string | null;
+}
+
+export interface EASRGuidelineResult {
+  search_input: EASRSearchInput;
+  found: boolean;
+  columns: string[];
+  rows: Record<string, string | null>[];
+  preamble: Record<string, string>;
+  source: string;
+  accessed_at: string;
+  note?: string | null;
+}
+
+export async function lookupEasr(searchInput: EASRSearchInput): Promise<EASRGuidelineResult> {
+  const response = await fetch(`${API_BASE_URL}/easr/lookup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(searchInput),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `eASR lookup failed with status ${response.status}`);
   }
 
   return response.json();
@@ -104,6 +145,21 @@ export async function getReportPreview(reportId: string): Promise<string> {
 
 export function getReportDownloadUrl(reportId: string): string {
   return `${API_BASE_URL}/reports/${reportId}/download`;
+}
+
+export interface GenerationProgress {
+  percent: number;
+  stage: string;
+}
+
+export async function getReportProgress(sessionId: string): Promise<GenerationProgress> {
+  const response = await fetch(`${API_BASE_URL}/reports/progress/${sessionId}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load progress with status ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export interface ApiKeyStatus {

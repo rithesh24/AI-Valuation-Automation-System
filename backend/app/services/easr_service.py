@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://easr.igrmaharashtra.gov.in/eASRCommon.aspx"
 _YEAR_SELECT = "#ctl00_ContentPlaceHolder5_ddlYear"
 _TALUKA_SELECT = "#ctl00_ContentPlaceHolder5_ddlTaluka"
+_DISTRICT_CHOICE_SELECT = "#ctl00_ContentPlaceHolder5_ddlDistrict"
+"""Mumbai only (D30): hDistName=Bombaymains has no Taluka dropdown at all — instead
+this District dropdown appears, offering "मुंबई(मेन)" (Mumbai City) / "मुंबई(उपनगर)"
+(Mumbai Suburban), and Village becomes available directly after selecting it."""
 _VILLAGE_SELECT = "#ctl00_ContentPlaceHolder5_ddlVillage"
 _RURAL_TABLE = "#ctl00_ContentPlaceHolder5_ruralDataGrid"
 _URBAN_TABLE = "#ctl00_ContentPlaceHolder5_grdUrbanSubZoneWiseRate"
@@ -36,11 +40,17 @@ class EASRSearchInput(BaseModel):
     """e.g. "2026-2027" — the hyphen is optional, stripped internally to match the portal."""
     district: str
     """Must match the portal's own `hDistName` identifier exactly (confirmed working: "Pune",
-    "Thane", "Nagpur"). Not every district's identifier is known yet — see D14."""
-    taluka: str
-    """Marathi label, must match a real option in the portal's Taluka dropdown."""
+    "Thane", "Nagpur", "Bombaymains" for Mumbai — see D14/D30). Not every district's
+    identifier is known yet."""
+    taluka: str | None = None
+    """Marathi label, must match a real option in the portal's Taluka dropdown. Required
+    unless the district uses `district_option` instead (currently only Mumbai) — see D30."""
     village: str
     """Marathi label, must match a real option in the portal's Village dropdown."""
+    district_option: str | None = None
+    """Required only for districts with no Taluka dropdown, which present an extra District
+    choice instead (currently only Mumbai, hDistName="Bombaymains": "मुंबई(मेन)" for Mumbai
+    City, "मुंबई(उपनगर)" for Mumbai Suburban) — see D30."""
     survey_no: str | None = None
     """Narrows results to rows whose sub-division text contains this value. Only meaningful for
     urban/municipal-corporation villages; rural villages have no survey-number concept — see D14."""
@@ -127,14 +137,30 @@ class EASRService:
         # execution context if a late reflow/redirect is still in flight.
         await page.wait_for_timeout(1000)
 
-        if await page.locator(_TALUKA_SELECT).count() == 0:
+        has_taluka = await page.locator(_TALUKA_SELECT).count() > 0
+        has_district_choice = await page.locator(_DISTRICT_CHOICE_SELECT).count() > 0
+        if not has_taluka and not has_district_choice:
             raise EASRServiceError(
                 f"District '{search_input.district}' was not recognized by the eASR portal "
                 "(no search form rendered). Verify the exact district identifier it expects."
             )
 
         await self._select_by_label(page, _YEAR_SELECT, search_input.year.replace("-", ""))
-        await self._select_by_label(page, _TALUKA_SELECT, search_input.taluka)
+
+        if has_taluka:
+            if not search_input.taluka:
+                raise EASRServiceError(
+                    f"District '{search_input.district}' requires 'taluka' to be specified."
+                )
+            await self._select_by_label(page, _TALUKA_SELECT, search_input.taluka)
+        else:
+            # Mumbai-style flow (D30): no Taluka dropdown — a District choice instead.
+            if not search_input.district_option:
+                raise EASRServiceError(
+                    f"District '{search_input.district}' presents multiple sub-districts and "
+                    "requires 'district_option' to be specified (e.g. Mumbai City vs Suburban)."
+                )
+            await self._select_by_label(page, _DISTRICT_CHOICE_SELECT, search_input.district_option)
 
         await page.wait_for_function(
             """(sel) => {

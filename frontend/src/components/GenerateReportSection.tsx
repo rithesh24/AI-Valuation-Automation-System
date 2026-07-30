@@ -1,34 +1,55 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import {
   generateReportFromSession,
   getReportDownloadUrl,
   getReportPreview,
+  getReportProgress,
   GenerateReportResult,
+  GenerationProgress,
 } from '@/lib/api';
 
 interface GenerateReportSectionProps {
   sessionId: string;
+  tier1OfficialData?: string | null;
 }
 
-export default function GenerateReportSection({ sessionId }: GenerateReportSectionProps) {
+const POLL_INTERVAL_MS = 800;
+
+export default function GenerateReportSection({ sessionId, tier1OfficialData }: GenerateReportSectionProps) {
   const [result, setResult] = useState<GenerateReportResult | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState<GenerationProgress>({ percent: 0, stage: '' });
+  const pollHandle = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function handleGenerate() {
     setError(null);
     setResult(null);
     setPreview(null);
+    setProgress({ percent: 0, stage: 'Starting…' });
     setIsGenerating(true);
+
+    pollHandle.current = setInterval(async () => {
+      try {
+        setProgress(await getReportProgress(sessionId));
+      } catch {
+        // transient poll failure — next tick will retry
+      }
+    }, POLL_INTERVAL_MS);
+
     try {
-      const generated = await generateReportFromSession(sessionId);
+      const generated = await generateReportFromSession(sessionId, tier1OfficialData);
       setResult(generated);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Report generation failed.');
     } finally {
+      if (pollHandle.current) {
+        clearInterval(pollHandle.current);
+        pollHandle.current = null;
+      }
       setIsGenerating(false);
     }
   }
@@ -54,6 +75,23 @@ export default function GenerateReportSection({ sessionId }: GenerateReportSecti
       <button className="btn btn-primary" onClick={handleGenerate} disabled={isGenerating}>
         {isGenerating ? 'Generating…' : 'Generate Report'}
       </button>
+
+      {isGenerating && (
+        <div className="progress-ring-wrap">
+          <div
+            className="progress-donut"
+            role="progressbar"
+            aria-valuenow={progress.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Report generation progress"
+            style={{ '--percent': progress.percent } as CSSProperties}
+          >
+            <span>{progress.percent}%</span>
+          </div>
+          <p className="upload-status">{progress.stage || 'Starting…'}</p>
+        </div>
+      )}
 
       {error && <p className="upload-error">{error}</p>}
 

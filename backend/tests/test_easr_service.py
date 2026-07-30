@@ -70,6 +70,17 @@ class TestModels:
         search_input = EASRSearchInput(year="2026-2027", district="Pune", taluka="हवेली", village="आकुर्डी")
         assert search_input.survey_no is None
 
+    def test_search_input_taluka_is_optional_for_district_option_flow(self):
+        """Mumbai (D30) has no Taluka dropdown — district_option is used instead."""
+        search_input = EASRSearchInput(
+            year="2025-2026",
+            district="Bombaymains",
+            district_option="मुंबई(उपनगर)",
+            village="मालाड ( पुर्व ) ( बोरीवली )",
+        )
+        assert search_input.taluka is None
+        assert search_input.district_option == "मुंबई(उपनगर)"
+
     def test_guideline_result_found_false_has_empty_rows_by_default(self):
         result = EASRGuidelineResult(
             search_input=EASRSearchInput(year="2026-2027", district="Pune", taluka="x", village="y"),

@@ -3,6 +3,7 @@ from pathlib import Path
 import fitz
 import pytest
 from docx import Document
+from docx.shared import Inches
 
 from app.models.template_mapping import FieldMapping
 from app.models.valuation_schema import ComparableEvidence, ValuationReportData
@@ -83,14 +84,34 @@ class TestSkeletonHash:
 
         assert service.skeleton_hash(skeleton_a) == service.skeleton_hash(skeleton_b)
 
-    def test_changes_when_a_label_changes(self, tmp_path: Path) -> None:
+    def test_stable_when_only_text_changes(self, tmp_path: Path) -> None:
+        """Real client templates are previous filled reports, not blank forms (D28) —
+        two uploads of the same bank format with different property data (different
+        owner name, different district value, even a relabelled field) must still
+        hit the same cache entry, since the hash is structural only."""
         path = tmp_path / "template.docx"
         _build_template(path)
         service = ReportService()
         original_hash = service.skeleton_hash(service.extract_template_skeleton(str(path)))
 
         document = Document(str(path))
-        document.paragraphs[1].text = "Name of Purchaser"
+        document.paragraphs[1].text = "Name of Purchaser"  # label
+        document.paragraphs[2].text = "Mr. Bhavesh Ishwarbhai Darji"  # value
+        document.tables[0].rows[0].cells[1].text = "Mumbai Suburban"  # value
+        document.save(path)
+
+        changed_hash = service.skeleton_hash(service.extract_template_skeleton(str(path)))
+
+        assert original_hash == changed_hash
+
+    def test_changes_when_a_table_column_is_added(self, tmp_path: Path) -> None:
+        path = tmp_path / "template.docx"
+        _build_template(path)
+        service = ReportService()
+        original_hash = service.skeleton_hash(service.extract_template_skeleton(str(path)))
+
+        document = Document(str(path))
+        document.tables[0].add_column(Inches(1))
         document.save(path)
 
         changed_hash = service.skeleton_hash(service.extract_template_skeleton(str(path)))
@@ -411,7 +432,7 @@ class TestGenerateFullReport:
     def _fake_claude_api_boundary(self, monkeypatch) -> None:
         monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
 
-        def fake_call_claude(self, prompt, tools):  # noqa: ARG001
+        def fake_call_claude(self, prompt, tools, on_status=None):  # noqa: ARG001
             if tools:
                 return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
             return _FakeAnthropicResponse(

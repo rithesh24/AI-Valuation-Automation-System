@@ -51,7 +51,7 @@ class TestRetryLoop:
 
         calls = {"count": 0}
 
-        def fake_call_claude(_prompt, _tools):
+        def fake_call_claude(_prompt, _tools, on_status=None):
             calls["count"] += 1
             if calls["count"] < 3:
                 raise anthropic.APIConnectionError(request=_REQUEST)
@@ -70,7 +70,7 @@ class TestRetryLoop:
         monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
         service = ClaudeService(max_retries=2, retry_delay_seconds=0)
 
-        def always_fails(_prompt, _tools):
+        def always_fails(_prompt, _tools, on_status=None):
             raise anthropic.APIConnectionError(request=_REQUEST)
 
         monkeypatch.setattr(service, "_call_claude", always_fails)
@@ -84,7 +84,7 @@ class TestRetryLoop:
 
         calls = {"count": 0}
 
-        def fails_auth(_prompt, _tools):
+        def fails_auth(_prompt, _tools, on_status=None):
             calls["count"] += 1
             response = httpx.Response(401, request=_REQUEST)
             raise anthropic.AuthenticationError("invalid key", response=response, body=None)
@@ -100,7 +100,9 @@ class TestRetryLoop:
         monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
         service = ClaudeService(max_retries=2, retry_delay_seconds=0)
 
-        monkeypatch.setattr(service, "_call_claude", lambda _prompt, _tools: _FakeResponse("not json"))
+        monkeypatch.setattr(
+            service, "_call_claude", lambda _prompt, _tools, on_status=None: _FakeResponse("not json")
+        )
 
         with pytest.raises(ClaudeServiceError, match="did not match the expected schema"):
             service.extract_valuation_data(document_texts={})
@@ -110,10 +112,116 @@ class TestRetryLoop:
         service = ClaudeService(max_retries=2, retry_delay_seconds=0)
 
         fenced = f"```json\n{_VALID_JSON}\n```"
-        monkeypatch.setattr(service, "_call_claude", lambda _prompt, _tools: _FakeResponse(fenced))
+        monkeypatch.setattr(
+            service, "_call_claude", lambda _prompt, _tools, on_status=None: _FakeResponse(fenced)
+        )
 
         result = service.extract_valuation_data(document_texts={})
         assert result.data.property_identification.district == "Pune"
+
+    def test_retries_on_a_blank_text_block(self, monkeypatch) -> None:
+        """The exact D27 follow-up bug: a text block present but empty (a
+        truncated/blank generation) used to fail immediately with a cryptic
+        json.loads error and no retry at all. It should now retry like any
+        other transient failure and succeed once a real response arrives."""
+        monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
+        service = ClaudeService(max_retries=2, retry_delay_seconds=0)
+
+        calls = {"count": 0}
+
+        def fake_call_claude(_prompt, _tools, on_status=None):
+            calls["count"] += 1
+            if calls["count"] < 2:
+                return _FakeResponse("")  # blank final text block
+            return _FakeResponse(_VALID_JSON)
+
+        monkeypatch.setattr(service, "_call_claude", fake_call_claude)
+
+        result = service.extract_valuation_data(document_texts={"a.pdf": "text"})
+
+        assert calls["count"] == 2
+        assert result.data.property_identification.district == "Pune"
+
+    def test_raises_a_clear_error_when_every_attempt_is_blank(self, monkeypatch) -> None:
+        monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
+        service = ClaudeService(max_retries=1, retry_delay_seconds=0)
+
+        monkeypatch.setattr(
+            service, "_call_claude", lambda _prompt, _tools, on_status=None: _FakeResponse("")
+        )
+
+        with pytest.raises(ClaudeServiceError, match="after 2 attempts"):
+            service.extract_valuation_data(document_texts={})
+
+    def test_retries_when_no_text_block_at_all(self, monkeypatch) -> None:
+        monkeypatch.setattr("app.services.claude_service.settings.ANTHROPIC_API_KEY", "sk-test")
+        service = ClaudeService(max_retries=2, retry_delay_seconds=0)
+
+        calls = {"count": 0}
+
+        class _NoTextResponse:
+            content: list = []
+            usage = _Usage()
+
+        def fake_call_claude(_prompt, _tools, on_status=None):
+            calls["count"] += 1
+            if calls["count"] < 2:
+                return _NoTextResponse()
+            return _FakeResponse(_VALID_JSON)
+
+        monkeypatch.setattr(service, "_call_claude", fake_call_claude)
+
+        result = service.extract_valuation_data(document_texts={"a.pdf": "text"})
+
+        assert calls["count"] == 2
+        assert result.data.property_identification.district == "Pune"
+
+
+class _FakeStreamEvent:
+    def __init__(self, block_type: str) -> None:
+        self.type = "content_block_start"
+        self.content_block = type("Block", (), {"type": block_type})()
+
+
+class TestReportStreamStatus:
+    """_report_stream_status is the logic behind on_status (D28-adjacent
+    progress work, 2026-07-30) — tested directly against fake events rather
+    than mocking the whole Anthropic stream/client."""
+
+    def test_reports_a_label_per_content_block(self) -> None:
+        service = ClaudeService()
+        received: list[tuple[str, int]] = []
+        events = [_FakeStreamEvent("thinking"), _FakeStreamEvent("server_tool_use"), _FakeStreamEvent("text")]
+
+        service._report_stream_status(events, lambda label, count: received.append((label, count)))
+
+        assert received == [
+            ("Reasoning about the property", 1),
+            ("Searching the web for comparables", 2),
+            ("Drafting the extracted data", 3),
+        ]
+
+    def test_unknown_block_type_gets_a_generic_label(self) -> None:
+        service = ClaudeService()
+        received: list[tuple[str, int]] = []
+
+        service._report_stream_status(
+            [_FakeStreamEvent("something_new")], lambda label, count: received.append((label, count))
+        )
+
+        assert received == [("Processing", 1)]
+
+    def test_swallows_a_mid_stream_error_without_crashing(self) -> None:
+        service = ClaudeService()
+        received: list[tuple[str, int]] = []
+
+        def bad_events():
+            yield _FakeStreamEvent("thinking")
+            raise RuntimeError("boom")
+
+        service._report_stream_status(bad_events(), lambda label, count: received.append((label, count)))
+
+        assert received == [("Reasoning about the property", 1)]
 
 
 class TestMapTemplateFields:
@@ -125,7 +233,7 @@ class TestMapTemplateFields:
             ' "property_identification.pin_code": {"location_id": null, "status": "not_present"}}'
         )
         monkeypatch.setattr(
-            service, "_call_claude", lambda _prompt, _tools: _FakeResponse(mapping_json)
+            service, "_call_claude", lambda _prompt, _tools, on_status=None: _FakeResponse(mapping_json)
         )
 
         skeleton = [SkeletonLocation(location_id="p0", type="paragraph", text="District")]
@@ -140,7 +248,7 @@ class TestMapTemplateFields:
         service = ClaudeService(max_retries=0, retry_delay_seconds=0)
         seen_tools = {}
 
-        def fake_call_claude(_prompt, tools):
+        def fake_call_claude(_prompt, tools, on_status=None):
             seen_tools["tools"] = tools
             return _FakeResponse("{}")
 

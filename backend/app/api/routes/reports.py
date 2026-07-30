@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.models.valuation_schema import ValuationReportData
 from app.services.claude_service import ClaudeServiceError
 from app.services.document_parser import DocumentParser, DocumentParserError
+from app.services.progress_tracker import get_progress
 from app.services.report_service import (
     InjectionResult,
     QualityCheckResult,
@@ -39,6 +40,11 @@ class GenerateReportResponse(BaseModel):
 
 class PreviewResponse(BaseModel):
     text: str
+
+
+class ProgressResponse(BaseModel):
+    percent: int
+    stage: str
 
 
 class GenerateFromSessionRequest(BaseModel):
@@ -127,6 +133,13 @@ def generate_report_from_session(
         quality_check=quality_check,
         extracted_data=extracted_data,
     )
+
+
+@router.get("/reports/progress/{session_id}", response_model=ProgressResponse)
+def get_generation_progress(session_id: str) -> ProgressResponse:
+    """Polled by the frontend while /reports/generate-from-session is in flight."""
+    progress = get_progress(session_id)
+    return ProgressResponse(percent=progress["percent"], stage=progress["stage"])
 
 
 @router.get("/reports/{report_id}/preview", response_model=PreviewResponse)

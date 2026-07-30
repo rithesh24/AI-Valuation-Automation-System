@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from datetime import date
+from typing import Callable
 
 import anthropic
 from pydantic import BaseModel, ValidationError
@@ -26,10 +27,25 @@ _RETRYABLE_ERRORS = (
     anthropic.RateLimitError,
     anthropic.InternalServerError,
 )
+# Best-effort labels for stream content-block types, surfaced as progress
+# status (docs/PROGRESS.md, 2026-07-30) — same total tokens either way,
+# streaming just lets us read events we'd otherwise discard until the end.
+_STREAM_STATUS_LABELS = {
+    "thinking": "Reasoning about the property",
+    "text": "Drafting the extracted data",
+    "server_tool_use": "Searching the web for comparables",
+    "tool_use": "Searching the web for comparables",
+    "web_search_tool_result": "Reviewing search results",
+}
 
 
 class ClaudeServiceError(Exception):
     """Raised when a Claude request fails outright. Message is safe to show the user."""
+
+
+class _EmptyResponseError(Exception):
+    """Internal only: Claude replied but gave no usable text (D27 follow-up).
+    Treated as retryable in _send_with_retries, not raised out to callers directly."""
 
 
 class ExtractionResult(BaseModel):
@@ -60,8 +76,15 @@ class ClaudeService:
         document_texts: dict[str, str],
         tier1_official_data: str | None = None,
         valuation_date: date | None = None,
+        on_status: Callable[[str, int], None] | None = None,
     ) -> ExtractionResult:
-        """Runs Stage 1 (Extraction): documents + Tier 1 data -> ValuationReportData."""
+        """Runs Stage 1 (Extraction): documents + Tier 1 data -> ValuationReportData.
+
+        `on_status(label, block_count)`, if given, is called as the stream's
+        content blocks arrive (thinking / web search / drafting) — this is
+        the slow, variable-duration call, so it's the one worth surfacing
+        progress for.
+        """
         if not settings.ANTHROPIC_API_KEY:
             raise ClaudeServiceError(
                 "ANTHROPIC_API_KEY is not configured. Set it from the app's Settings screen."
@@ -72,7 +95,7 @@ class ClaudeService:
             tier1_official_data=tier1_official_data,
             valuation_date=valuation_date,
         )
-        response = self._send_with_retries(prompt, tools=[_WEB_SEARCH_TOOL])
+        response = self._send_with_retries(prompt, tools=[_WEB_SEARCH_TOOL], on_status=on_status)
         raw_text = self._response_text(response)
         try:
             data = ValuationReportData.model_validate(json.loads(raw_text))
@@ -109,14 +132,29 @@ class ClaudeService:
         )
         return mapping
 
-    def _send_with_retries(self, prompt: str, tools: list[dict]):
+    def _send_with_retries(
+        self,
+        prompt: str,
+        tools: list[dict],
+        on_status: Callable[[str, int], None] | None = None,
+    ):
         last_error: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
-                return self._call_claude(prompt, tools)
+                response = self._call_claude(prompt, tools, on_status=on_status)
+                self._response_text(response)  # raises _EmptyResponseError on a blank/truncated reply
+                return response
             except _RETRYABLE_ERRORS as exc:
                 last_error = exc
                 logger.warning("Claude request attempt %d failed: %s", attempt + 1, exc)
+                if attempt < self._max_retries:
+                    time.sleep(self._retry_delay_seconds)
+            except _EmptyResponseError as exc:
+                # A blank/truncated final text block (D27 follow-up, 2026-07-30) usually
+                # means the model ran out of budget on a slow turn — not a permanent
+                # failure, so it gets the same retry treatment as a transient API error.
+                last_error = exc
+                logger.warning("Claude request attempt %d returned an unusable response: %s", attempt + 1, exc)
                 if attempt < self._max_retries:
                     time.sleep(self._retry_delay_seconds)
             except anthropic.APIError as exc:
@@ -126,7 +164,12 @@ class ClaudeService:
             f"Claude request failed after {self._max_retries + 1} attempts: {last_error}"
         )
 
-    def _call_claude(self, prompt: str, tools: list[dict]):
+    def _call_claude(
+        self,
+        prompt: str,
+        tools: list[dict],
+        on_status: Callable[[str, int], None] | None = None,
+    ):
         """Sonnet 5 runs adaptive thinking by default (no `thinking` param set —
         that's a deliberate choice, not an oversight) and Stage 1's web-search
         tool can chain several search/code-execution rounds — both eat into
@@ -140,13 +183,36 @@ class ClaudeService:
             tools=tools,
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
+            if on_status:
+                self._report_stream_status(stream, on_status)
             return stream.get_final_message()
+
+    def _report_stream_status(self, stream, on_status: Callable[[str, int], None]) -> None:
+        """Best-effort status from raw stream events (block count + type) —
+        never lets a status-reporting issue break the actual extraction,
+        since this is UX only, not the result."""
+        block_count = 0
+        try:
+            for event in stream:
+                if getattr(event, "type", None) != "content_block_start":
+                    continue
+                block_count += 1
+                block_type = getattr(event.content_block, "type", "")
+                on_status(_STREAM_STATUS_LABELS.get(block_type, "Processing"), block_count)
+        except Exception:
+            logger.warning("Progress-status streaming failed; continuing without it.", exc_info=True)
 
     def _response_text(self, response) -> str:
         text_blocks = [block.text for block in response.content if block.type == "text"]
         if not text_blocks:
-            raise ClaudeServiceError("Claude returned no text content.")
-        return _strip_code_fence(text_blocks[-1].strip())
+            raise _EmptyResponseError("Claude returned no text content.")
+        text = _strip_code_fence(text_blocks[-1].strip())
+        if not text:
+            # The exact D27 follow-up bug (docs/DECISIONS.md, 2026-07-30): a text
+            # block was present but blank — json.loads("") gives the cryptic
+            # "Expecting value: line 1 column 1 (char 0)" with no clue why.
+            raise _EmptyResponseError("Claude returned a blank text block (likely truncated).")
+        return text
 
 
 def _strip_code_fence(text: str) -> str:
