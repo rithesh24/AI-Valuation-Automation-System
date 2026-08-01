@@ -4,7 +4,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, Server } from 'node:http';
 import path from 'node:path';
 
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = (): boolean => !app.isPackaged;
 const BACKEND_PORT = 8000;
 const BACKEND_HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
 
@@ -46,7 +46,7 @@ function startBackend(): void {
   backendProcess.on('error', (err) => console.error('[backend] failed to start:', err));
 }
 
-async function waitForBackend(timeoutMs = 20000, intervalMs = 300): Promise<boolean> {
+async function waitForBackend(timeoutMs = 60000, intervalMs = 300): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -111,7 +111,7 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  if (isDev) {
+  if (isDev()) {
     window.loadURL('http://localhost:3000');
     return;
   }
@@ -132,7 +132,7 @@ async function createWindow(): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  if (!isDev) {
+  if (!isDev()) {
     startBackend();
   }
   createWindow();

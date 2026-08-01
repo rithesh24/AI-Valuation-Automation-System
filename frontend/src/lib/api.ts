@@ -69,10 +69,21 @@ export interface QualityCheckResult {
   disclosed_unavailable: string[];
 }
 
+export interface OfficialRateCitation {
+  source: string;
+  rate: string;
+  unit: string;
+  access_date: string;
+  remarks: string;
+}
+
 export interface GenerateReportResult {
   report_id: string;
   injection: InjectionResult;
   quality_check: QualityCheckResult;
+  extracted_data: {
+    official_rate_evidence: OfficialRateCitation[];
+  };
 }
 
 export async function generateReportFromSession(

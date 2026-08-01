@@ -10,6 +10,7 @@ describe('GenerateReportSection', () => {
       report_id: 'report-1',
       injection: { output_path: '/tmp/report.docx', filled_fields: ['a'], unmapped_fields: [] },
       quality_check: { passed: true, injection_failures: [], disclosed_unavailable: [] },
+      extracted_data: { official_rate_evidence: [] },
     });
 
     render(<GenerateReportSection sessionId="session-1" />);
@@ -31,6 +32,7 @@ describe('GenerateReportSection', () => {
         injection_failures: ['property_identification.district'],
         disclosed_unavailable: [],
       },
+      extracted_data: { official_rate_evidence: [] },
     });
 
     render(<GenerateReportSection sessionId="session-1" />);
@@ -56,6 +58,7 @@ describe('GenerateReportSection', () => {
       report_id: 'report-1',
       injection: { output_path: '/tmp/report.docx', filled_fields: [], unmapped_fields: [] },
       quality_check: { passed: true, injection_failures: [], disclosed_unavailable: [] },
+      extracted_data: { official_rate_evidence: [] },
     });
     vi.spyOn(api, 'getReportPreview').mockResolvedValue('VALUATION REPORT\nDistrict: Pune');
 

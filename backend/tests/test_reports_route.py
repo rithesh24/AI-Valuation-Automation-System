@@ -15,7 +15,9 @@ client = TestClient(app)
 def _build_template(path: Path) -> None:
     document = Document()
     document.add_paragraph("VALUATION REPORT")
-    document.add_paragraph("")
+    document.add_paragraph("")  # p1
+    document.add_paragraph("")  # p2
+    document.add_paragraph("")  # p3
     document.save(path)
 
 
@@ -31,7 +33,15 @@ def _fake_claude_mapping(monkeypatch) -> None:
     """No real API call: ClaudeService.map_template_fields is swapped for a fake."""
 
     def fake_map_template_fields(self, skeleton):  # noqa: ARG001
-        return {"property_identification.district": FieldMapping(location_id="p1")}
+        return {
+            "property_identification.district": FieldMapping(location_id="p1"),
+            # ConcludedValues' percentage fields default to real ("90"/"80") values
+            # rather than the sentinel, so get_or_create_mapping's completeness
+            # backfill (_normalize_mapping) would otherwise flag them as
+            # injection failures unless the fake mapping accounts for them too.
+            "concluded_values.realisable_value_percentage": FieldMapping(location_id="p2"),
+            "concluded_values.forced_sale_value_percentage": FieldMapping(location_id="p3"),
+        }
 
     monkeypatch.setattr(ClaudeService, "map_template_fields", fake_map_template_fields)
 
@@ -50,7 +60,11 @@ def test_generate_preview_download_flow(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["injection"]["filled_fields"] == ["property_identification.district"]
+    assert body["injection"]["filled_fields"] == [
+        "property_identification.district",
+        "concluded_values.realisable_value_percentage",
+        "concluded_values.forced_sale_value_percentage",
+    ]
     assert body["quality_check"]["passed"] is True
     report_id = body["report_id"]
 
@@ -120,11 +134,11 @@ class TestGenerateFromSession:
         self._upload_session(tmp_path, session_id)
 
         def fake_call_claude(self, prompt, tools, on_status=None):  # noqa: ARG001
-            if tools:
-                return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
-            return _FakeAnthropicResponse(
-                '{"property_identification.district": {"location_id": "t0r0c1", "confidence": "high"}}'
-            )
+            # Only the "if tools" (extraction) branch is ever actually exercised here:
+            # the module-level `_fake_claude_mapping` autouse fixture replaces
+            # ClaudeService.map_template_fields wholesale, so it never reaches
+            # _call_claude for the mapping step at all.
+            return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
 
         monkeypatch.setattr(ClaudeService, "_call_claude", fake_call_claude)
 

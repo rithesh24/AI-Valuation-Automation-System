@@ -35,20 +35,31 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="avas-backend",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+# onedir, not onefile (D21 already made this call for Chromium/Tesseract —
+# a onefile exe re-extracts itself into a fresh temp dir on every launch,
+# which Windows Defender then re-scans every time, easily blowing past
+# main.ts's health-check timeout on first run).
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="avas-backend",
 )

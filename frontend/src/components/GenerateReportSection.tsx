@@ -100,6 +100,22 @@ export default function GenerateReportSection({ sessionId, tier1OfficialData }: 
           <p className={`upload-status${result.quality_check.passed ? ' status-success' : ''}`}>
             Quality check: {result.quality_check.passed ? 'Passed' : 'Issues found'}
           </p>
+          {result.extracted_data.official_rate_evidence.length > 0 ? (
+            <div className="upload-status status-success">
+              ✓ eASR official rate included in this report
+              {!tier1OfficialData && ' (found automatically from the extracted property location)'}.
+              {result.extracted_data.official_rate_evidence.map((citation, i) => (
+                <pre key={i} className="report-preview">
+                  {citation.rate}
+                  {'\n'}Unit: {citation.unit} · Source: {citation.source}
+                </pre>
+              ))}
+            </div>
+          ) : (
+            <p className="upload-status">
+              No eASR data found automatically — use the manual lookup below if you want to add it.
+            </p>
+          )}
           {result.quality_check.injection_failures.length > 0 && (
             <p className="upload-error">
               Fields with values but no template location:{' '}

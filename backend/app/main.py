@@ -18,6 +18,10 @@ app = FastAPI(title="AVAS Backend", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    # The packaged Electron app serves its frontend from a random localhost
+    # port (main.ts binds to port 0), so no fixed origin can be configured
+    # for it — match any loopback port instead.
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

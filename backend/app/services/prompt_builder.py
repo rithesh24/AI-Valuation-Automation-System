@@ -59,6 +59,8 @@ Do not certify title. State that the title narration is based on the documents f
 
 Flag: missing link documents, unregistered documents, incomplete title chain, name mismatch, area discrepancy, absence of conveyance, absence of share certificate, expired lease, transfer restrictions, mortgage, charge, litigation, attachment, acquisition, reservation, tenancy, third-party possession.
 
+In addition to the structured chronological entries above, also write the same flow of title as a single flowing prose narrative (one paragraph or a short sequence of paragraphs, not a table) — some templates render Flow of Title as narrative text rather than a table, and this narrative must describe the identical underlying facts, with material discrepancies woven in inline rather than only listed separately.
+
 5. Area and Measurement Reconciliation
 
 Extract all available area details: carpet, RERA carpet, built-up, super built-up, saleable, balcony, terrace, loft/mezzanine, plot, gross land, net plot, road-widening, reservation, encroached, construction, factory shed, open storage.
@@ -81,11 +83,15 @@ For buildings/units: type of structure (RCC framed, load-bearing, steel-frame, i
 
 Where the actual property differs from the sanctioned plan, state the discrepancy and its valuation treatment.
 
+Also record: the seismic zone classification (Bureau of Indian Standards) applicable to the property's location and its implication; whether the property/security was geo-tagged at inspection (e.g. via a mobile app) and, if so, the date of geo-tagging.
+
 8. Land Use and Statutory Position
 
 Verify and state: agricultural/non-agricultural status; residential/commercial/industrial/institutional/mixed use; Development Plan zoning; reservation; road widening; acquisition; CRZ/forest/eco-sensitive/green-zone/no-development-zone restrictions; airport/defence restrictions; heritage restrictions; flood-line restrictions; applicable Development Control Regulations; permissible FSI/FAR; basic/premium/incentive/fungible/consumed/balance FSI; TDR; setbacks; height restrictions; parking requirements; Fire NOC; RERA status; municipal approval status; NA permission; layout sanction; industrial-authority permission; commencement/occupation status.
 
 Do not assume FSI/FAR without reliable documentary or regulatory support. Where it cannot be established, state: "Permissible and consumed FSI could not be conclusively verified from the documents provided and requires confirmation from the competent planning authority."
+
+Where applicable, also record the RERA-designated bank account details for the project (bank name, branch, account number, IFSC code).
 
 9. Encumbrances and Litigation
 
@@ -143,6 +149,8 @@ For every comparable, include: indicator number, location, property type, area, 
 
 Select comparables based on similar locality, property type, use, area, tenure, age, condition, floor, amenities, legal status, FSI, and recency. Do not merely average unrelated comparables — explain the adopted rate based on adjusted evidence.
 
+Perform web searches efficiently: enough rounds to gather sufficient comparable evidence to satisfy the minimum above, not exhaustive or duplicative research. Each additional search round consumes output budget that is also needed to complete the JSON response.
+
 17. Valuation Calculation
 
 Check and recheck every calculation.
@@ -167,11 +175,33 @@ State all concluded values in figures and words, using the Indian numbering form
 
 Disclose clearly: area discrepancy, approved-plan discrepancy, unauthorised construction, combined/subdivided units, missing OC/CC/title document, RERA mismatch, title-chain gap, incorrect survey/CTS number, name mismatch, encroachment, tenancy, litigation, reservation, road widening, lease expiry, transfer restriction, unpaid dues, structural distress, lack of access, incomplete construction, auction restrictions, limited market evidence. State how each material discrepancy has been treated in the valuation.
 
-20. Limiting Conditions and Assumptions
+20. Valuer and Inspection Particulars
+
+Record: name of the valuer; the valuer's firm name and designation (e.g. Proprietor of the valuation firm); the valuer's government/panel registration number; the valuer's empanelment reference and validity date with the instructing bank; persons accompanying or available at the site at the time of inspection; and the name and designation of the bank official who accompanied the inspection.
+
+21. Locality, Distance and Civic Amenities
+
+Record: classification of the locality (e.g. middle class, upper-middle class); civic amenities available nearby (schools, hospitals, shopping/malls, etc.); distance from the nearest bus stop; distance from the nearest railway station; distance from the municipal/corporation office; distance from the nearest airport; distance from the instructing bank branch.
+
+22. Occupancy of the Subject Property
+
+State whether the subject property itself (not third-party occupants already covered under title flags) is self-occupied, tenanted, let out, vacant, or under construction. If tenanted/let out: since how long, number of tenants, total monthly rental income, and (if partly owner-occupied) the extent of area under owner occupation. If the property is commercial: present activity/business being conducted, and whether it is well suited for that use. If the property is industrial: type of activity/industry the premises is suited for, sanctioned and connected power load, and other facilities available.
+
+23. Insurance, Tax and Prior Valuation Particulars
+
+Record insurance particulars where available: insurance company name, insured amount, risks covered, expiry date. Record tax payment details where available (Corporation Tax / Land Revenue / Wealth Tax): year of assessment, amount, date of payment, one entry per tax type/year.
+
+Determine whether the property has been valued earlier. If so, record: date of the prior valuation, name and address of the prior valuer, whether that valuer was the bank's approved valuer, whether their empanelment was in force at that time, the purpose of the prior valuation, and its basis.
+
+24. Marketability and Local Enquiries
+
+Record details of local enquiries made (e.g. developers, local estate agents, property consultants, online listing platforms consulted), including owners of surrounding lands where ascertained. State an opinion on whether the property/asset can be readily disposed of or auctioned if it were to come onto the market; if not, state the reasons.
+
+25. Limiting Conditions and Assumptions
 
 Disclose: documents not made available; documents not independently verified; reliance on electronic/scanned copies; areas accepted from documents without physical measurement; title assumed marketable subject to legal verification; no legal opinion expressed; no structural audit carried out unless stated; concealed defects not investigated; environmental/soil conditions not tested; statutory permissions assumed genuine unless contrary evidence exists; FSI subject to confirmation from planning authority; market evidence may be subject to negotiation; registered-data access may be limited; litigation/encumbrances not quantified without evidence; valuation valid only as on the valuation date; subsequent market movement not considered; report prepared only for the stated purpose; use for another purpose requires a fresh valuation; no responsibility accepted for undisclosed facts; Market Value is not a guaranteed sale price; Realisable/Forced Sale Values depend on market exposure, possession, title, and buyer interest.
 
-21. Non-Fabrication Rule
+26. Non-Fabrication Rule
 
 Every factual statement shall be supported by: an uploaded document, a government record, a statutory portal, a reliable public source, or a clearly disclosed professional assumption.
 
@@ -180,6 +210,8 @@ Where information is unavailable: do not guess; do not fabricate; retain the rel
 OUTPUT FORMAT
 
 Return a single JSON object matching the schema provided below. Do not return prose, a document, or markdown — structured data only. Where a field's value is unavailable per the Non-Fabrication Rule above, set it to the literal string "Information not available / not provided – refer Limiting Conditions." rather than omitting the field.
+
+Output budget discipline: this schema is large. Keep narrative/free-text field values concise and factual — a sentence or two conveying the material fact, not an extended essay — unless a field specifically calls for a fuller narrative (e.g. the flow-of-title narrative). If you are running low on remaining output budget, prioritize emitting a complete, syntactically valid JSON object over continuing to elaborate individual field values: a shorter but complete and valid response is far more useful than a longer one that gets cut off mid-object. Ensure every string value is properly JSON-escaped (quotation marks, currency symbols, and any special characters carried over from source documents).
 
 {canonical_schema}"""
 
@@ -202,7 +234,9 @@ Rules:
 - Prefer exact or near-exact label matches over inferred/contextual matches; note your confidence for each mapping (high / medium / low) so low-confidence mappings can be flagged for the valuer's review.
 - Narrative sections without a clear label (e.g. "Flow of Title" as a paragraph block) should be mapped as a single insertion point for the corresponding generated narrative text, not split field-by-field.
 
-OUTPUT FORMAT: a single JSON object mapping each schema field name to {{"location_id": ..., "confidence": "high|medium|low"}} or {{"location_id": null, "status": "not_present"}}. Return only the JSON object, nothing else."""
+OUTPUT FORMAT: a single JSON object with exactly one entry per schema field listed above, mapping each schema field name to {{"location_id": ..., "confidence": "high|medium|low"}} or {{"location_id": null, "status": "not_present"}}. Return only the JSON object, nothing else, with no markdown code fences.
+
+This schema has 300+ fields — keep the JSON compact (no extra whitespace) to conserve output budget. If you are at genuine risk of running out of budget before finishing, prioritize giving every remaining field a {{"location_id": null, "status": "not_present"}} entry over leaving the object incomplete or malformed: a field marked not_present can be corrected later via the manual regenerate-mapping option, but a field silently missing from the response is indistinguishable from one you simply forgot, and a truncated JSON object cannot be parsed at all."""
 
 
 class PromptBuilder:

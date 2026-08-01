@@ -8,6 +8,7 @@ generating new formatted elements — only mutating existing Run text and
 cloning existing table rows — so formatting fidelity holds by construction.
 """
 
+import asyncio
 import copy
 import hashlib
 import json
@@ -24,14 +25,56 @@ from pydantic import BaseModel
 
 from app.core.db import get_connection
 from app.models.template_mapping import FieldMapping, SkeletonLocation
-from app.models.valuation_schema import INFO_NOT_AVAILABLE, ValuationReportData
+from app.models.valuation_schema import (
+    INFO_NOT_AVAILABLE,
+    OfficialRateCitation,
+    ValuationReportData,
+    canonical_schema_field_list,
+)
 from app.services.claude_service import ClaudeService
 from app.services.document_parser import DocumentParser, DocumentParserError
+from app.services.easr_service import EASRGuidelineResult, EASRService
 from app.services.progress_tracker import set_progress
 from app.services.upload_service import UploadCategory, UploadService
 
 _TABLE_CELL_LOCATION_RE = re.compile(r"^t(\d+)r(\d+)c(\d+)$")
 _OCR_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def _financial_year_string(as_of: date) -> str:
+    """eASR's Year dropdown uses the Indian financial year (April-March), e.g. "2026-2027"
+    for any date from 2026-04-01 through 2027-03-31."""
+    start_year = as_of.year if as_of.month >= 4 else as_of.year - 1
+    return f"{start_year}-{start_year + 1}"
+
+
+def _citation_from_easr_result(result: EASRGuidelineResult) -> OfficialRateCitation:
+    """Formats an eASR auto-lookup result into one OfficialRateCitation. Doesn't try to
+    pick a single "the rate" out of multiple rows/categories (rural has one row per
+    assessment type, urban has one column per land-use category) — that's a judgment call
+    for the valuer/Claude, not something to guess. Compacts everything real into the
+    citation's text fields instead."""
+    unit_column = next((c for c in result.columns if c.lower() in ("unit",) or "एकक" in c), None)
+    row_summaries = []
+    for row in result.rows:
+        parts = [
+            f"{col}: {val}"
+            for col, val in row.items()
+            if val and col not in ("Select", unit_column)
+        ]
+        row_summaries.append("; ".join(parts))
+    first_row_unit = result.rows[0].get(unit_column) if result.rows and unit_column else None
+    unit = first_row_unit or INFO_NOT_AVAILABLE
+    remarks = "Auto-fetched via eASR from the extracted property location."
+    if result.note:
+        remarks = f"{remarks} {result.note}"
+    return OfficialRateCitation(
+        source=result.source,
+        rate=" | ".join(row_summaries) if row_summaries else INFO_NOT_AVAILABLE,
+        unit=unit,
+        access_date=result.accessed_at.date().isoformat(),
+        remarks=remarks,
+    )
 
 
 class ReportServiceError(Exception):
@@ -195,9 +238,10 @@ class ReportService:
         if not force_regenerate:
             cached = self.get_cached_mapping(skeleton_hash)
             if cached is not None:
-                return cached, skeleton_hash
+                return _normalize_mapping(cached), skeleton_hash
 
         mapping = (claude_service or ClaudeService()).map_template_fields(skeleton)
+        mapping = _normalize_mapping(mapping)
         self.save_mapping(skeleton_hash, mapping, bank_name=bank_name)
         return mapping, skeleton_hash
 
@@ -263,19 +307,25 @@ class ReportService:
         upload_service: UploadService | None = None,
         document_parser: DocumentParser | None = None,
         claude_service: ClaudeService | None = None,
+        easr_service: EASRService | None = None,
     ) -> tuple[InjectionResult, QualityCheckResult, ValuationReportData]:
         """Full pipeline entry point (docs/ARCHITECTURE.md's Data Flow): a
         session's uploaded documents -> parsed text -> Stage 1 extraction ->
         Stage 2 mapping (cached) -> Stage 3 injection -> quality check.
 
-        Tier 1 official data (eASR) is an optional caller-supplied string —
-        looking it up is a separate, manual step (D14/D15: it needs
-        valuer-provided District/Taluka/Village inputs that can't be derived
-        from the uploaded documents alone).
+        Tier 1 official data (eASR): if the caller already supplies
+        `tier1_official_data` (the manual EasrLookupSection flow, D14/D15),
+        it's used as-is. Otherwise (D37), an eASR auto-lookup is attempted
+        after extraction using the District/Taluka/Village/Survey Number
+        Stage 1 already extracted from the documents — best-effort; a
+        confident result is appended to `official_rate_evidence` directly
+        (no second Claude call), an unconfident/failed one just leaves the
+        field for the valuer to fill via the manual form as before.
         """
         upload_service = upload_service or UploadService()
         document_parser = document_parser or DocumentParser()
         claude_service = claude_service or ClaudeService()
+        easr_service = easr_service or EASRService()
 
         template_paths = upload_service.list_session_files(session_id, UploadCategory.TEMPLATE)
         if len(template_paths) != 1:
@@ -332,6 +382,10 @@ class ReportService:
             on_status=on_extraction_status,
         )
 
+        if tier1_official_data is None:
+            set_progress(session_id, 57, "Attempting eASR auto-lookup")
+            self._try_auto_easr(extraction.data, valuation_date, easr_service)
+
         set_progress(session_id, 60, "Mapping fields to the template")
         mapping, _ = self.get_or_create_mapping(
             template_path, claude_service=claude_service, force_regenerate=force_regenerate_mapping
@@ -345,6 +399,34 @@ class ReportService:
 
         set_progress(session_id, 100, "Done")
         return injection, quality_check, extraction.data
+
+    @staticmethod
+    def _try_auto_easr(
+        data: ValuationReportData, valuation_date: date | None, easr_service: EASRService
+    ) -> None:
+        """D37: best-effort eASR auto-lookup using Stage 1's own extracted
+        District/Taluka/Village/Survey Number — appends a citation to
+        `official_rate_evidence` on success, leaves it untouched on any
+        failure/ambiguity (never raises; the manual form remains available)."""
+        pi = data.property_identification
+        if pi.district == INFO_NOT_AVAILABLE or pi.revenue_village == INFO_NOT_AVAILABLE:
+            return
+        survey_no = pi.survey_number if pi.survey_number != INFO_NOT_AVAILABLE else None
+        year = _financial_year_string(valuation_date or date.today())
+        try:
+            result = asyncio.run(
+                easr_service.try_auto_lookup(
+                    year=year,
+                    district_text=pi.district,
+                    taluka_text=pi.taluka,
+                    village_text=pi.revenue_village,
+                    survey_no=survey_no,
+                )
+            )
+        except Exception:  # pragma: no cover - defensive, try_auto_lookup already catches
+            return
+        if result and result.found:
+            data.official_rate_evidence.append(_citation_from_easr_result(result))
 
     def run_quality_check(
         self, mapping: dict[str, FieldMapping], data: ValuationReportData
@@ -369,6 +451,25 @@ class ReportService:
             injection_failures=injection_failures,
             disclosed_unavailable=disclosed_unavailable,
         )
+
+
+def _normalize_mapping(mapping: dict[str, FieldMapping]) -> dict[str, FieldMapping]:
+    """Backfills any canonical schema field missing from `mapping` with an
+    explicit not_present entry.
+
+    Stage 2's prompt asks Claude for exactly one entry per schema field, but
+    a field the response omits (budget pressure, non-compliance, or a
+    mapping cached before this normalization existed) would otherwise never
+    appear in `inject_data`/`run_quality_check`'s iteration at all — silently
+    indistinguishable from a field nobody ever asked about. Treating a
+    missing entry the same as an explicit not_present makes it visible
+    through the exact same "no location" path those already use.
+    """
+    normalized = dict(mapping)
+    for field_name, _ in canonical_schema_field_list():
+        if field_name not in normalized:
+            normalized[field_name] = FieldMapping(location_id=None, status="not_present")
+    return normalized
 
 
 def _parse_document(

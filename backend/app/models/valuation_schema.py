@@ -119,6 +119,13 @@ class OwnershipAndTitle(BaseModel):
         default_factory=list,
         description="Chronological flow of title, one entry per transaction",
     )
+    flow_of_title_narrative: str = _str_field(
+        "Flow of title as a single flowing prose paragraph (chronological narrative, "
+        "not a table) for templates that render this as one narrative block rather "
+        "than a repeating table; material discrepancies should be woven in inline, "
+        "the same way flow_of_title's structured entries are, since this is a "
+        "rendering of the same underlying facts, not a separate research task"
+    )
     title_flags: list[str] = Field(
         default_factory=list,
         description=(
@@ -220,6 +227,14 @@ class SiteParticulars(BaseModel):
     accessibility: str = _str_field("Accessibility")
     locational_advantages: str = _str_field("Locational advantages")
     locational_disadvantages: str = _str_field("Locational disadvantages")
+    seismic_zone: str = _str_field(
+        "Seismic zone classification (Bureau of Indian Standards) and its implication "
+        "for the property's location"
+    )
+    geo_tagged: str = _str_field(
+        "Whether the property/security was geo-tagged (e.g. via a mobile app) at inspection"
+    )
+    geo_tagging_date: str = _str_field("Date of geo-tagging, if geo-tagged")
 
 
 class BuildingParticulars(BaseModel):
@@ -250,9 +265,31 @@ class BuildingParticulars(BaseModel):
     merger_or_subdivision_of_units: str = _str_field("Merger or subdivision of units")
 
 
+class LocalityParticulars(BaseModel):
+    classification_of_locality: str = _str_field(
+        "Classification of the locality (e.g. middle class, upper-middle class area)"
+    )
+    civic_amenities: str = _str_field(
+        "Civic amenities available nearby (schools, hospitals, shopping/malls, etc.)"
+    )
+    distance_from_bus_stop: str = _str_field("Distance from the nearest bus stop")
+    distance_from_railway_station: str = _str_field("Distance from the nearest railway station")
+    distance_from_municipal_or_corporation_office: str = _str_field(
+        "Distance from the municipal/corporation office"
+    )
+    distance_from_airport: str = _str_field("Distance from the nearest airport")
+    distance_from_bank_branch: str = _str_field("Distance from the instructing bank branch")
+
+
 class SiteAndBuildingParticulars(BaseModel):
     site: SiteParticulars = Field(default_factory=SiteParticulars)
     building: BuildingParticulars = Field(default_factory=BuildingParticulars)
+    locality: LocalityParticulars = Field(default_factory=LocalityParticulars)
+    local_enquiries_details: str = _str_field(
+        "Details of local enquiries made (e.g. developers, local estate agents, "
+        "property consultants, online listing platforms consulted), including "
+        "owners of surrounding lands where ascertained"
+    )
     plan_deviation_note: str = _str_field(
         "Discrepancy between the actual property and the sanctioned plan, and its "
         "valuation treatment"
@@ -296,6 +333,10 @@ class StatutoryPosition(BaseModel):
     parking_requirements: str = _str_field("Parking requirements")
     fire_noc: str = _str_field("Fire NOC")
     rera_status: str = _str_field("RERA status")
+    rera_bank_account_details: str = _str_field(
+        "RERA-designated bank account details for the project (bank name, branch, "
+        "account number, IFSC code), where applicable"
+    )
     municipal_approval_status: str = _str_field("Municipal approval status")
     na_permission: str = _str_field("NA permission")
     layout_sanction: str = _str_field("Layout sanction")
@@ -324,6 +365,86 @@ class EncumbrancesAndLitigation(BaseModel):
     unquantified_material_effect_note: str = _str_field(
         "Disclosure where a material encumbrance's effect cannot be quantified from "
         "reliable evidence"
+    )
+
+
+# --- Occupancy of the subject property --------------------------------------
+
+
+class OccupancyDetails(BaseModel):
+    occupancy_status: str = _str_field(
+        "Whether the subject property is self-occupied / tenanted / let out / "
+        "vacant / under construction"
+    )
+    since_how_long: str = _str_field("If tenanted/let out, since how long")
+    number_of_tenants: str = _str_field("If tenanted/let out, number of tenants")
+    total_monthly_income: str = _str_field("If tenanted/let out, total monthly rental income")
+    partly_owner_occupied_extent: str = _str_field(
+        "If partly owner-occupied, extent of area under owner occupation"
+    )
+    commercial_activity_or_business: str = _str_field(
+        "If the property is commercial: present activity/business being conducted, "
+        "and whether well suited for office/business/other specified use"
+    )
+    industrial_activity_type: str = _str_field(
+        "If the property is industrial: type of activity/industry the premises is "
+        "well suited for, and whether presently well suited for that activity"
+    )
+    sanctioned_power_load: str = _str_field("Sanctioned power load, if industrial")
+    connected_power_load: str = _str_field("Connected power load, if industrial")
+    other_facilities_available: str = _str_field(
+        "Other facilities available at the property (commercial/industrial)"
+    )
+
+
+# --- Insurance, tax, and prior valuation -------------------------------------
+
+
+class InsuranceParticulars(BaseModel):
+    company_name: str = _str_field("Name of the insurance company")
+    insured_amount: str = _str_field("Insured amount")
+    risks_covered: str = _str_field("Risks covered")
+    expiry_date: str = _str_field("Expiry date of the insurance policy")
+
+
+class TaxPaymentItem(BaseModel):
+    tax_type: str = _str_field("Corporation Tax / Land Revenue / Wealth Tax / other")
+    year_of_assessment: str = _str_field("Year of assessment")
+    amount: str = _str_field("Amount")
+    date_of_payment: str = _str_field("Date of payment")
+
+
+class PriorValuation(BaseModel):
+    previously_valued: str = _str_field("Whether the property has been valued earlier")
+    date_of_prior_valuation: str = _str_field("Date of the prior valuation, if any")
+    prior_valuer_name_and_address: str = _str_field("Name and address of the prior valuer")
+    prior_valuer_bank_approved: str = _str_field("Whether the prior valuer was the bank's approved valuer")
+    prior_valuer_empanelment_in_force: str = _str_field(
+        "Whether the prior valuer's empanelment was in force at that time"
+    )
+    prior_valuation_purpose: str = _str_field("Purpose of the prior valuation")
+    prior_valuation_basis: str = _str_field("Basis of the prior valuation")
+
+
+# --- Valuer and inspection particulars ---------------------------------------
+
+
+class ValuerAndInspectionDetails(BaseModel):
+    valuer_name: str = _str_field("Name of the valuer")
+    valuer_firm_and_designation: str = _str_field(
+        "Valuer's firm name and designation (e.g. Proprietor of the valuation firm)"
+    )
+    valuer_registration_number: str = _str_field(
+        "Valuer's government/panel registration number (e.g. Category I registration)"
+    )
+    valuer_empanelment_validity: str = _str_field(
+        "Valuer's empanelment reference and validity date with the instructing bank"
+    )
+    persons_accompanying_at_site: str = _str_field(
+        "Persons accompanying / available at the site at the time of inspection"
+    )
+    bank_official_name_and_designation: str = _str_field(
+        "Name and designation of the bank official who accompanied the inspection"
     )
 
 
@@ -529,6 +650,10 @@ class ConcludedValues(BaseModel):
     )
     forced_sale_value: str = _str_field("Forced Sale Value, in figures")
     forced_sale_value_words: str = _str_field("Forced Sale Value, in words")
+    marketability_opinion: str = _str_field(
+        "Opinion on whether the property/asset can be readily disposed of or "
+        "auctioned; if not, the reasons"
+    )
 
 
 # --- Section 19: Discrepancies and Red Flags --------------------------------
@@ -549,6 +674,9 @@ class RedFlag(BaseModel):
 class ValuationReportData(BaseModel):
     """The full canonical schema: Stage 1 output, Stage 2 mapping input, Stage 3 injection input."""
 
+    valuer_and_inspection_details: ValuerAndInspectionDetails = Field(
+        default_factory=ValuerAndInspectionDetails
+    )
     documents_referred_to: list[DocumentReference] = Field(default_factory=list)
     property_identification: PropertyIdentification = Field(
         default_factory=PropertyIdentification
@@ -563,6 +691,10 @@ class ValuationReportData(BaseModel):
     encumbrances_and_litigation: EncumbrancesAndLitigation = Field(
         default_factory=EncumbrancesAndLitigation
     )
+    occupancy_details: OccupancyDetails = Field(default_factory=OccupancyDetails)
+    insurance_particulars: InsuranceParticulars = Field(default_factory=InsuranceParticulars)
+    tax_payment_details: list[TaxPaymentItem] = Field(default_factory=list)
+    prior_valuation: PriorValuation = Field(default_factory=PriorValuation)
     purpose_and_basis: PurposeAndBasis = Field(default_factory=PurposeAndBasis)
     highest_and_best_use: HighestAndBestUse = Field(default_factory=HighestAndBestUse)
     valuation_approach: ValuationApproachSelection = Field(

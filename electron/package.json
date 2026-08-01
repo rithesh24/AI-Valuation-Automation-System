@@ -29,7 +29,7 @@
       "dist/**/*"
     ],
     "extraResources": [
-      { "from": "../backend/dist/avas-backend.exe", "to": "backend/avas-backend.exe" },
+      { "from": "../backend/dist/avas-backend", "to": "backend" },
       { "from": "../frontend/out", "to": "frontend/out" },
       { "from": "vendor/tesseract", "to": "tesseract" },
       { "from": "vendor/playwright-browsers", "to": "playwright-browsers" }

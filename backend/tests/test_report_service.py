@@ -1,3 +1,4 @@
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import fitz
@@ -6,9 +7,21 @@ from docx import Document
 from docx.shared import Inches
 
 from app.models.template_mapping import FieldMapping
-from app.models.valuation_schema import ComparableEvidence, ValuationReportData
+from app.models.valuation_schema import (
+    INFO_NOT_AVAILABLE,
+    ComparableEvidence,
+    ValuationReportData,
+    canonical_schema_field_list,
+)
 from app.services.claude_service import ClaudeService
-from app.services.report_service import ReportService, ReportServiceError, _resolve_template_path
+from app.services.easr_service import EASRGuidelineResult, EASRSearchInput, EASRService
+from app.services.report_service import (
+    ReportService,
+    ReportServiceError,
+    _citation_from_easr_result,
+    _financial_year_string,
+    _resolve_template_path,
+)
 
 
 def _build_template(path: Path) -> None:
@@ -150,8 +163,12 @@ class TestMappingCache:
         mapping, skeleton_hash = service.get_or_create_mapping(str(path), claude_service=claude)
 
         assert claude.calls == 1
-        assert mapping == fake_mapping
-        assert service.get_cached_mapping(skeleton_hash) == fake_mapping
+        assert mapping["property_identification.district"] == fake_mapping["property_identification.district"]
+        # get_or_create_mapping backfills every canonical field Claude's response
+        # didn't return (see _normalize_mapping) so it — and the cached copy —
+        # are always complete, not just whatever the fake happened to include.
+        assert len(mapping) == len(canonical_schema_field_list())
+        assert service.get_cached_mapping(skeleton_hash) == mapping
 
     def test_cache_hit_does_not_call_claude(self, tmp_path: Path) -> None:
         path = tmp_path / "template.docx"
@@ -164,7 +181,7 @@ class TestMappingCache:
         mapping, _ = service.get_or_create_mapping(str(path), claude_service=claude)
 
         assert claude.calls == 1  # not called a second time
-        assert mapping == fake_mapping
+        assert mapping["property_identification.district"] == fake_mapping["property_identification.district"]
 
     def test_force_regenerate_calls_claude_again(self, tmp_path: Path) -> None:
         path = tmp_path / "template.docx"
@@ -242,7 +259,7 @@ class TestPdfTemplateSupport:
         mapping, _ = ReportService().get_or_create_mapping(str(pdf_path), claude_service=claude)
 
         assert claude.calls == 1
-        assert mapping == fake_mapping
+        assert mapping["ownership_and_title.present_owners"] == fake_mapping["ownership_and_title.present_owners"]
 
     def test_inject_data_fills_a_converted_pdf_template(self, tmp_path: Path) -> None:
         pdf_path = tmp_path / "template.pdf"
@@ -436,7 +453,9 @@ class TestGenerateFullReport:
             if tools:
                 return _FakeAnthropicResponse('{"property_identification": {"district": "Pune"}}')
             return _FakeAnthropicResponse(
-                '{"property_identification.district": {"location_id": "t0r0c1", "confidence": "high"}}'
+                '{"property_identification.district": {"location_id": "t0r0c1", "confidence": "high"},'
+                ' "concluded_values.realisable_value_percentage": {"location_id": "t0r1c1", "confidence": "high"},'
+                ' "concluded_values.forced_sale_value_percentage": {"location_id": "t0r1c1", "confidence": "high"}}'
             )
 
         monkeypatch.setattr(ClaudeService, "_call_claude", fake_call_claude)
@@ -491,3 +510,125 @@ class TestGenerateFullReport:
             ReportService().generate_full_report(
                 session_id=session_id, output_path=str(tmp_path / "report.docx")
             )
+
+
+class TestFinancialYearString:
+    def test_january_belongs_to_previous_years_financial_year(self):
+        assert _financial_year_string(date(2026, 1, 15)) == "2025-2026"
+
+    def test_april_starts_the_new_financial_year(self):
+        assert _financial_year_string(date(2026, 4, 1)) == "2026-2027"
+
+    def test_march_still_belongs_to_the_prior_financial_year(self):
+        assert _financial_year_string(date(2027, 3, 31)) == "2026-2027"
+
+
+class TestCitationFromEasrResult:
+    def _result(self, rows, columns) -> EASRGuidelineResult:
+        search_input = EASRSearchInput(year="2026-2027", district="Pune", taluka="x", village="y")
+        return EASRGuidelineResult(
+            search_input=search_input,
+            found=bool(rows),
+            columns=columns,
+            rows=rows,
+            source="IGR Maharashtra e ASR (igreval), accessed 2026-08-01",
+            accessed_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+
+    def test_single_row_summarized_without_dropping_data(self):
+        row = {
+            "Select": "SurveyNo",
+            "उपविभाग": "5/52-text",
+            "खुली जमीन": "44380",
+            "एकक (Rs./)": "चौ. मीटर",
+        }
+        result = self._result(rows=[row], columns=list(row.keys()))
+        citation = _citation_from_easr_result(result)
+        assert "Select" not in citation.rate  # excluded — not a rate figure
+        assert "44380" in citation.rate
+        assert citation.unit == "चौ. मीटर"
+        assert citation.access_date == "2026-08-01"
+
+    def test_multiple_rows_are_joined_not_reduced_to_one(self):
+        result = self._result(
+            rows=[
+                {"Assessment Type": "जिरायत", "Rate Rs/-": "100"},
+                {"Assessment Type": "बिनशेती", "Rate Rs/-": "200"},
+            ],
+            columns=["Assessment Type", "Rate Rs/-"],
+        )
+        citation = _citation_from_easr_result(result)
+        assert "100" in citation.rate
+        assert "200" in citation.rate
+        assert citation.rate.count("|") == 1  # two rows joined by one separator
+
+    def test_empty_rows_never_fabricate_a_rate(self):
+        result = self._result(rows=[], columns=[])
+        citation = _citation_from_easr_result(result)
+        assert citation.rate == INFO_NOT_AVAILABLE
+
+
+class TestTryAutoEasr:
+    """D37: the best-effort auto-lookup step generate_full_report runs after
+    extraction when the caller didn't already supply tier1_official_data."""
+
+    def test_skips_when_district_not_extracted(self, monkeypatch):
+        data = ValuationReportData()  # district stays at the INFO_NOT_AVAILABLE sentinel
+        called = {"count": 0}
+
+        async def fake_try_auto_lookup(*args, **kwargs):  # noqa: ARG001
+            called["count"] += 1
+            return None
+
+        service = EASRService()
+        monkeypatch.setattr(service, "try_auto_lookup", fake_try_auto_lookup)
+
+        ReportService._try_auto_easr(data, date(2026, 8, 1), service)
+
+        assert called["count"] == 0
+        assert data.official_rate_evidence == []
+
+    def test_appends_citation_on_confident_match(self, monkeypatch):
+        data = ValuationReportData()
+        data.property_identification.district = "Mumbai Suburban"
+        data.property_identification.taluka = "Borivali"
+        data.property_identification.revenue_village = "Kurar"
+
+        fake_result = EASRGuidelineResult(
+            search_input=EASRSearchInput(
+                year="2026-2027", district="Bombaymains", district_option="Mumbai Suburban",
+                taluka="Borivali", village="Kurar (Borivali)",
+            ),
+            found=True,
+            columns=["Select", "उपविभाग", "खुली जमीन"],
+            rows=[{"Select": "SurveyNo", "उपविभाग": "72/332-text", "खुली जमीन": "44380"}],
+            source="IGR Maharashtra e ASR (igreval), accessed 2026-08-01",
+            accessed_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+
+        async def fake_try_auto_lookup(*args, **kwargs):  # noqa: ARG001
+            return fake_result
+
+        service = EASRService()
+        monkeypatch.setattr(service, "try_auto_lookup", fake_try_auto_lookup)
+
+        ReportService._try_auto_easr(data, date(2026, 8, 1), service)
+
+        assert len(data.official_rate_evidence) == 1
+        assert "44380" in data.official_rate_evidence[0].rate
+
+    def test_leaves_evidence_untouched_when_lookup_returns_none(self, monkeypatch):
+        data = ValuationReportData()
+        data.property_identification.district = "Some Unknown District"
+        data.property_identification.taluka = "x"
+        data.property_identification.revenue_village = "y"
+
+        async def fake_try_auto_lookup(*args, **kwargs):  # noqa: ARG001
+            return None
+
+        service = EASRService()
+        monkeypatch.setattr(service, "try_auto_lookup", fake_try_auto_lookup)
+
+        ReportService._try_auto_easr(data, date(2026, 8, 1), service)
+
+        assert data.official_rate_evidence == []

@@ -9,7 +9,7 @@ describe('Home', () => {
     expect(screen.getByText('Property Documents')).toBeInTheDocument();
     expect(screen.getByText('Bank Valuation Template')).toBeInTheDocument();
     expect(screen.getByText('Supporting Images')).toBeInTheDocument();
-    expect(screen.getByText('Official Guideline Rate (eASR, optional)')).toBeInTheDocument();
+    expect(screen.getByText('Official Guideline Rate (eASR)')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /usage dashboard/i })).toHaveAttribute(
       'href',
       '/dashboard'

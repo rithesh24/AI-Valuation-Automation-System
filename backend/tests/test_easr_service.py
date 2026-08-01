@@ -22,7 +22,7 @@ RURAL_TABLE_HTML = """
 """
 
 URBAN_TABLE_HTML = """
-<table id="ctl00_ContentPlaceHolder5_grdUrbanSubZoneWiseRate">
+<table id="ctl00_ContentPlaceHolder5_dg_Valuation2_0">
   <tr>
     <th>Select</th><th>उपविभाग</th><th>खुली जमीन</th><th>निवासी सदनिका</th>
     <th>ऑफ़ीस</th><th>दुकाने</th><th>औद्योगिक</th><th>एकक (Rs./)</th>
@@ -70,16 +70,18 @@ class TestModels:
         search_input = EASRSearchInput(year="2026-2027", district="Pune", taluka="हवेली", village="आकुर्डी")
         assert search_input.survey_no is None
 
-    def test_search_input_taluka_is_optional_for_district_option_flow(self):
-        """Mumbai (D30) has no Taluka dropdown — district_option is used instead."""
+    def test_search_input_district_option_selects_mumbai_sub_district(self):
+        """eASR 2.0 (D34): Mumbai's District dropdown offers two entries (City/Suburban)
+        and still has a real Taluka dropdown, unlike 1.9 — both fields are set."""
         search_input = EASRSearchInput(
-            year="2025-2026",
+            year="2026-2027",
             district="Bombaymains",
-            district_option="मुंबई(उपनगर)",
-            village="मालाड ( पुर्व ) ( बोरीवली )",
+            district_option="Mumbai Suburban",
+            taluka="Borivali",
+            village="Malad (East) (Borivali)",
         )
-        assert search_input.taluka is None
-        assert search_input.district_option == "मुंबई(उपनगर)"
+        assert search_input.taluka == "Borivali"
+        assert search_input.district_option == "Mumbai Suburban"
 
     def test_guideline_result_found_false_has_empty_rows_by_default(self):
         result = EASRGuidelineResult(
@@ -90,6 +92,39 @@ class TestModels:
         )
         assert result.rows == []
         assert result.columns == []
+
+
+class TestAutoMatch:
+    """Pure logic (D34/D37) — no browser involved."""
+
+    def test_best_match_prefers_unique_substring(self):
+        options = ["Malad (East) (Borivali)", "Charkop (Borivali)"]
+        assert EASRService._best_match("Malad", options) == "Malad (East) (Borivali)"
+
+    def test_best_match_returns_none_when_ambiguous(self):
+        options = ["Malad (East) (Borivali)", "Malad (West) (Borivali)"]
+        assert EASRService._best_match("Malad", options) is None
+
+    def test_best_match_returns_none_when_no_match(self):
+        assert EASRService._best_match("Nonexistent Place", ["Borivali", "Andheri"]) is None
+
+    def test_best_match_falls_back_to_close_match_for_typos(self):
+        # No exact substring, but close enough for difflib's cutoff.
+        assert EASRService._best_match("Borivalli", ["Borivali", "Andheri"]) == "Borivali"
+
+    def test_resolve_district_code_known_variants(self):
+        assert EASRService._resolve_district_code("Mumbai Suburban") == "Bombaymains"
+        assert EASRService._resolve_district_code("mumbai city") == "Bombaymains"
+        assert EASRService._resolve_district_code("Pune") == "Pune"
+
+    def test_resolve_district_code_unknown_returns_none(self):
+        assert EASRService._resolve_district_code("Some Unknown District") is None
+
+    def test_normalize_year_accepts_unhyphenated(self):
+        assert EASRService._normalize_year("20262027") == "2026-2027"
+
+    def test_normalize_year_passes_through_hyphenated(self):
+        assert EASRService._normalize_year("2026-2027") == "2026-2027"
 
 
 class TestRetryLoop:
@@ -195,7 +230,7 @@ class TestTableParsing:
                 page = await browser.new_page()
                 await page.set_content(URBAN_TABLE_HTML)
                 service = EASRService()
-                table = page.locator("#ctl00_ContentPlaceHolder5_grdUrbanSubZoneWiseRate")
+                table = page.locator("#ctl00_ContentPlaceHolder5_dg_Valuation2_0")
                 columns, rows = await service._parse_table(table)
                 filtered = service._filter_by_survey_no(columns, rows, "5/53")
                 await browser.close()

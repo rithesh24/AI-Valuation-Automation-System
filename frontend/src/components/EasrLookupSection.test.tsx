@@ -18,6 +18,7 @@ describe('EasrLookupSection', () => {
 
     const onResult = vi.fn();
     render(<EasrLookupSection onResult={onResult} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Manual lookup / override' }));
 
     await userEvent.type(screen.getByPlaceholderText(/District/), 'Pune');
     await userEvent.type(screen.getByPlaceholderText('Village'), 'आकुर्डी');
@@ -34,6 +35,7 @@ describe('EasrLookupSection', () => {
     vi.spyOn(api, 'lookupEasr').mockRejectedValue(new Error("'x' is not a valid option"));
 
     render(<EasrLookupSection onResult={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Manual lookup / override' }));
 
     await userEvent.type(screen.getByPlaceholderText(/District/), 'Pune');
     await userEvent.type(screen.getByPlaceholderText('Village'), 'x');
@@ -55,6 +57,7 @@ describe('EasrLookupSection', () => {
 
     const onResult = vi.fn();
     render(<EasrLookupSection onResult={onResult} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Manual lookup / override' }));
 
     await userEvent.type(screen.getByPlaceholderText(/District/), 'Pune');
     await userEvent.type(screen.getByPlaceholderText('Village'), 'आकुर्डी');
