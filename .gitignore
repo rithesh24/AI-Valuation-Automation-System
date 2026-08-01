@@ -17,6 +17,12 @@ venv/
 # Uploaded files (temporary storage, never committed)
 backend/data/
 
+# Docs and tests (kept locally, not tracked in this repo — see git history for older versions)
+docs/
+backend/tests/
+frontend/**/*.test.ts
+frontend/**/*.test.tsx
+
 # Env
 .env
 .env.local
